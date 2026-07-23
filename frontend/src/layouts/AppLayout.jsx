@@ -1,0 +1,3 @@
+import { Link, NavLink, Outlet } from 'react-router-dom'
+const links = [['/', 'Home'], ['/jobs', 'Find Jobs'], ['/dashboard', 'Dashboard'], ['/about', 'About'], ['/contact', 'Contact']]
+export default function AppLayout() { return <div className="min-vh-100 bg-light"><nav className="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm"><div className="container"><Link className="navbar-brand fw-bold" to="/">Freelance Marketplace</Link><div className="navbar-nav ms-auto align-items-lg-center">{links.map(([to, label]) => <NavLink key={to} to={to} className="nav-link">{label}</NavLink>)}<NavLink to="/login" className="btn btn-outline-light ms-lg-2">Log in</NavLink></div></div></nav><main className="container py-5"><Outlet /></main></div> }
