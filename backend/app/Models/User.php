@@ -7,6 +7,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
@@ -22,8 +23,11 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'profile_photo_path',
         'password',
     ];
+
+    protected $appends = ['profile_photo_url'];
 
     /**
      * The attributes that should be hidden for serialization.
@@ -73,8 +77,48 @@ class User extends Authenticatable
         return $this->hasMany(Proposal::class, 'freelancer_id');
     }
 
+    public function proposalCreditAccount()
+    {
+        return $this->hasOne(ProposalCreditAccount::class);
+    }
+
+    public function proposalCreditTransactions()
+    {
+        return $this->hasMany(ProposalCreditTransaction::class);
+    }
+
+    public function portfolioItems()
+    {
+        return $this->hasMany(PortfolioItem::class)->orderBy('sort_order')->latest('id');
+    }
+
+    public function freelancerResume()
+    {
+        return $this->hasOne(FreelancerResume::class);
+    }
+
+    public function clientConversations()
+    {
+        return $this->hasMany(Conversation::class, 'client_id');
+    }
+
+    public function freelancerConversations()
+    {
+        return $this->hasMany(Conversation::class, 'freelancer_id');
+    }
+
+    public function marketplaceNotifications()
+    {
+        return $this->hasMany(MarketplaceNotification::class);
+    }
+
     public function hasRole(string $role): bool
     {
         return $this->roles()->where('name', $role)->exists();
+    }
+
+    public function getProfilePhotoUrlAttribute(): ?string
+    {
+        return $this->profile_photo_path ? url(Storage::disk('public')->url($this->profile_photo_path)) : null;
     }
 }

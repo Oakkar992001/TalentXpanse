@@ -5,15 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class ClientProfile extends Model
+class ProposalCreditAccount extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['user_id', 'company_name', 'company_description', 'website', 'industry', 'location', 'billing_verified'];
+    protected $fillable = ['user_id', 'balance', 'last_monthly_grant_at'];
 
     protected function casts(): array
     {
-        return ['billing_verified' => 'boolean'];
+        return ['last_monthly_grant_at' => 'date'];
     }
 
     public function user()

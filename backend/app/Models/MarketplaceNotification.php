@@ -5,15 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class ClientProfile extends Model
+class MarketplaceNotification extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['user_id', 'company_name', 'company_description', 'website', 'industry', 'location', 'billing_verified'];
+    protected $fillable = ['user_id', 'type', 'title', 'body', 'url', 'read_at'];
 
     protected function casts(): array
     {
-        return ['billing_verified' => 'boolean'];
+        return ['read_at' => 'datetime'];
     }
 
     public function user()

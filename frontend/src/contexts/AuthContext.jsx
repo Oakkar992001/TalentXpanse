@@ -26,6 +26,11 @@ export function AuthProvider({ children }) {
 
   const value = useMemo(() => ({
     user, loading,
+    refreshUser: async () => {
+      const { data } = await api.get('/auth/user')
+      setUser(data.user)
+      return data.user
+    },
     login: async (payload) => finishAuth((await api.post('/auth/login', payload)).data),
     register: async (payload) => finishAuth((await api.post('/auth/register', payload)).data),
     googleLogin: async (payload) => finishAuth((await api.post('/auth/google', payload)).data),

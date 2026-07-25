@@ -14,8 +14,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
@@ -141,6 +141,7 @@ class AuthController extends Controller
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
+            'profile_photo_url' => $user->profile_photo_url,
             'roles' => $user->roles->pluck('name')->values(),
             'freelancer_profile' => $user->freelancerProfile,
             'client_profile' => $user->clientProfile,
@@ -231,6 +232,7 @@ class AuthController extends Controller
         }
 
         $bytes = ltrim(pack('N', $length), "\x00");
+
         return chr(128 | strlen($bytes)).$bytes;
     }
 

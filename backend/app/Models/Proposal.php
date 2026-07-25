@@ -9,7 +9,7 @@ class Proposal extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['job_id', 'freelancer_id', 'cover_letter', 'bid_amount', 'delivery_days', 'status'];
+    protected $fillable = ['job_id', 'freelancer_id', 'cover_letter', 'bid_amount', 'delivery_days', 'credit_cost', 'resume_path', 'resume_name', 'status'];
 
     public function job()
     {
@@ -19,5 +19,15 @@ class Proposal extends Model
     public function freelancer()
     {
         return $this->belongsTo(User::class, 'freelancer_id');
+    }
+
+    public function workSamples()
+    {
+        return $this->hasMany(ProposalWorkSample::class);
+    }
+
+    public function conversation()
+    {
+        return $this->hasOne(Conversation::class);
     }
 }

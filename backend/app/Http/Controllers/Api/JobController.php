@@ -4,11 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Job;
+use App\Services\TrustSummaryService;
 use Illuminate\Http\Request;
 
 class JobController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, TrustSummaryService $trust)
     {
         $query = Job::query()->with(['client.clientProfile'])->withCount('proposals')->latest();
 
@@ -28,12 +29,18 @@ class JobController extends Controller
             $query->where('status', 'open');
         }
 
-        return ['data' => $query->paginate(12)];
+        $jobs = $query->paginate(12);
+        $jobs->getCollection()->each(fn (Job $job) => $job->client?->setAttribute('trust_summary', $trust->for($job->client)));
+
+        return ['data' => $jobs];
     }
 
-    public function show(Job $job)
+    public function show(Job $job, TrustSummaryService $trust)
     {
-        return ['data' => $job->load(['client.clientProfile'])->loadCount('proposals')];
+        $job->load(['client.clientProfile'])->loadCount('proposals');
+        $job->client?->setAttribute('trust_summary', $trust->for($job->client));
+
+        return ['data' => $job];
     }
 
     public function store(Request $request)
@@ -47,7 +54,9 @@ class JobController extends Controller
     public function update(Request $request, Job $job)
     {
         abort_unless($job->client_id === $request->user()->id, 403, 'Only the job owner can update this job.');
-        $job->update($this->validated($request, false));
+        $data = $this->validated($request, false);
+        abort_if(($data['status'] ?? null) === 'open' && $job->status === 'in_progress', 422, 'A job cannot be reopened after hiring a freelancer.');
+        $job->update($data);
 
         return ['data' => $job->fresh(['client.clientProfile'])];
     }
@@ -79,7 +88,7 @@ class JobController extends Controller
             'budget_type' => ['sometimes', 'in:fixed,hourly'],
             'duration' => ['nullable', 'string', 'max:80'],
             'experience_level' => ['sometimes', 'in:entry,intermediate,expert'],
-            'status' => ['sometimes', 'in:draft,open,paused,closed'],
+            'status' => ['sometimes', 'in:draft,open,paused,closed,in_progress,completed,cancelled'],
         ]);
     }
 }
