@@ -1,19 +1,30 @@
 <?php
 
+use App\Http\Controllers\Api\AccountSettingsController;
+use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ClientProfileController;
 use App\Http\Controllers\Api\ContractController;
 use App\Http\Controllers\Api\ContractReviewController;
+use App\Http\Controllers\Api\ContractSupportRequestController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\FreelancerProfileController;
 use App\Http\Controllers\Api\FreelancerResumeController;
 use App\Http\Controllers\Api\JobController;
 use App\Http\Controllers\Api\MarketplaceNotificationController;
+use App\Http\Controllers\Api\NotificationPreferenceController;
+use App\Http\Controllers\Api\MarketplaceSearchController;
+use App\Http\Controllers\Api\MarketplaceSaveController;
+use App\Http\Controllers\Api\MarketplaceReportController;
 use App\Http\Controllers\Api\PortfolioController;
+use App\Http\Controllers\Api\PasswordController;
+use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\ProfilePhotoController;
 use App\Http\Controllers\Api\ProposalController;
 use App\Http\Controllers\Api\ProposalCreditController;
+use App\Http\Controllers\Api\PublicFreelancerController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', fn () => response()->json(['status' => 'ok', 'application' => config('app.name')]));
@@ -21,17 +32,44 @@ Route::get('/health', fn () => response()->json(['status' => 'ok', 'application'
 Route::post('/auth/register', [AuthController::class, 'register']);
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/google', [AuthController::class, 'google']);
+Route::post('/admin/auth/login', [AuthController::class, 'adminLogin']);
+Route::post('/auth/forgot-password', [PasswordResetController::class, 'send'])->middleware('throttle:6,1');
+Route::post('/auth/reset-password', [PasswordResetController::class, 'reset'])->middleware('throttle:6,1');
+Route::get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])->middleware('signed')->name('verification.verify');
 
 Route::get('/jobs', [JobController::class, 'index']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/user', [AuthController::class, 'user']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::post('/email/verification-notification', [EmailVerificationController::class, 'send'])->middleware('throttle:6,1');
     Route::post('/auth/roles', [AuthController::class, 'addRole']);
+    Route::patch('/auth/active-role', [AuthController::class, 'setActiveRole']);
+    Route::get('/account-settings', [AccountSettingsController::class, 'show']);
+    Route::put('/account-settings', [AccountSettingsController::class, 'update']);
+    Route::put('/account/password', [PasswordController::class, 'update']);
 
     Route::get('/dashboard', [DashboardController::class, 'show']);
     Route::get('/proposal-credits', [ProposalCreditController::class, 'show']);
+    Route::get('/search', [MarketplaceSearchController::class, 'search']);
+    Route::post('/reports', [MarketplaceReportController::class, 'store']);
+    Route::get('/marketplace-saves', [MarketplaceSaveController::class, 'index']);
+    Route::put('/saved-jobs/{job}', [MarketplaceSaveController::class, 'saveJob']);
+    Route::delete('/saved-jobs/{job}', [MarketplaceSaveController::class, 'removeJob']);
+    Route::put('/saved-talent/{freelancerProfile}', [MarketplaceSaveController::class, 'saveTalent']);
+    Route::delete('/saved-talent/{freelancerProfile}', [MarketplaceSaveController::class, 'removeTalent']);
+    Route::get('/admin/dashboard', [AdminController::class, 'dashboard']);
+    Route::get('/admin/users', [AdminController::class, 'users']);
+    Route::patch('/admin/users/{user}', [AdminController::class, 'updateUser']);
+    Route::get('/admin/jobs', [AdminController::class, 'jobs']);
+    Route::patch('/admin/jobs/{job}', [AdminController::class, 'updateJob']);
+    Route::get('/admin/reports', [AdminController::class, 'reports']);
+    Route::patch('/admin/reports/{report}', [AdminController::class, 'updateReport']);
+    Route::get('/admin/support-requests', [AdminController::class, 'supportRequests']);
+    Route::patch('/admin/support-requests/{supportRequest}', [AdminController::class, 'updateSupportRequest']);
     Route::get('/notifications', [MarketplaceNotificationController::class, 'index']);
+    Route::get('/notification-preferences', [NotificationPreferenceController::class, 'show']);
+    Route::put('/notification-preferences', [NotificationPreferenceController::class, 'update']);
     Route::get('/notifications/summary', [MarketplaceNotificationController::class, 'summary']);
     Route::patch('/notifications/read-all', [MarketplaceNotificationController::class, 'markAllRead']);
     Route::patch('/notifications/{notification}/read', [MarketplaceNotificationController::class, 'markRead']);
@@ -46,6 +84,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/milestones/{milestone}', [ContractController::class, 'updateMilestone']);
     Route::post('/contracts/{contract}/complete', [ContractController::class, 'complete']);
     Route::post('/contracts/{contract}/reviews', [ContractReviewController::class, 'store']);
+    Route::post('/contracts/{contract}/support-requests', [ContractSupportRequestController::class, 'store']);
     Route::get('/freelancer-profile', [FreelancerProfileController::class, 'show']);
     Route::put('/freelancer-profile', [FreelancerProfileController::class, 'update']);
     Route::get('/client-profile', [ClientProfileController::class, 'show']);
@@ -68,3 +107,4 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 Route::get('/jobs/{job}', [JobController::class, 'show']);
+Route::get('/freelancers/{user}', [PublicFreelancerController::class, 'show']);

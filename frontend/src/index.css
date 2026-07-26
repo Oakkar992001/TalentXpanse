@@ -8,7 +8,7 @@ button { cursor: pointer; }
 a { color: inherit; text-decoration: none; }
 
 :root, [data-theme='light'] { --page:#f8fafc; --surface:#fff; --surface-soft:#f4f6ff; --surface-tint:#eef1ff; --text:#10172b; --muted:#65708a; --line:#e1e6f0; --brand:#4f46e5; --brand-dark:#3730a3; --on-brand:#fff; --shadow:0 20px 45px rgba(38,43,80,.10); --sidebar:#fff; --sidebar-line:#edf0f6; --nav-hover:#eff1ff; --nav-active:#4f46e5; --positive:#1aa260; }
-[data-theme='dark'] { --page:#0b1220; --surface:#111a2a; --surface-soft:#151f31; --surface-tint:#1d2945; --text:#eef2ff; --muted:#a5afc2; --line:#27334a; --brand:#7470ff; --brand-dark:#908cff; --on-brand:#fff; --shadow:0 22px 45px rgba(0,0,0,.25); --sidebar:#0c1422; --sidebar-line:#202b40; --nav-hover:#1d2945; --nav-active:#6260db; --positive:#53d68c; }
+[data-theme='dark'] { --page:#0a1020; --surface:#121a2b; --surface-soft:#18233a; --surface-tint:#202d4b; --text:#f3f6ff; --muted:#aeb9ce; --line:#2b3954; --brand:#8b88ff; --brand-dark:#a6a3ff; --on-brand:#fff; --shadow:0 22px 45px rgba(0,0,0,.34); --sidebar:#0d1526; --sidebar-line:#26344e; --nav-hover:#1d2a45; --nav-active:#625fe3; --positive:#5ce09a; }
 
 .app-shell main { min-height: calc(100vh - 77px); }
 .site-header { height:77px; display:flex; align-items:center; gap:42px; padding:0 max(30px, calc((100vw - 1420px)/2)); background:var(--surface); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10; }
@@ -53,3 +53,4 @@ a { color: inherit; text-decoration: none; }
 @media (max-width:760px) { .profile-page { padding:42px 20px 75px; }.profile-page h1 { font-size:32px; }.profile-layout { grid-template-columns:1fr; }.portfolio-grid { grid-template-columns:1fr; }.portfolio-add > div, .profile-fields { grid-template-columns:1fr; } }
 
 @media (max-width:760px) { .messages-page { min-height:auto; padding:24px 15px; }.messages-page h1 { font-size:25px; }.messages-layout { height:auto; min-height:0; grid-template-columns:1fr; }.conversation-list { max-height:280px; border-right:0; border-bottom:1px solid var(--line); }.chat-panel { min-height:520px; }.chat-messages article { max-width:86%; } }
+.auth-forgot { margin:11px 0 0; text-align:right; font-size:12px; }.auth-forgot a { color:var(--brand); font-weight:700; }

@@ -2,15 +2,16 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
+use App\Notifications\TalentXpanseResetPassword;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
@@ -24,7 +25,10 @@ class User extends Authenticatable
         'name',
         'email',
         'profile_photo_path',
+        'active_role',
         'password',
+        'status',
+        'notification_preferences',
     ];
 
     protected $appends = ['profile_photo_url'];
@@ -49,6 +53,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'notification_preferences' => 'array',
         ];
     }
 
@@ -87,6 +92,16 @@ class User extends Authenticatable
         return $this->hasMany(ProposalCreditTransaction::class);
     }
 
+    public function savedJobs()
+    {
+        return $this->hasMany(MarketplaceSavedJob::class);
+    }
+
+    public function savedTalent()
+    {
+        return $this->hasMany(MarketplaceSavedTalent::class);
+    }
+
     public function portfolioItems()
     {
         return $this->hasMany(PortfolioItem::class)->orderBy('sort_order')->latest('id');
@@ -112,9 +127,19 @@ class User extends Authenticatable
         return $this->hasMany(MarketplaceNotification::class);
     }
 
+    public function oauthIdentities()
+    {
+        return $this->hasMany(OauthIdentity::class);
+    }
+
     public function hasRole(string $role): bool
     {
         return $this->roles()->where('name', $role)->exists();
+    }
+
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new TalentXpanseResetPassword($token));
     }
 
     public function getProfilePhotoUrlAttribute(): ?string

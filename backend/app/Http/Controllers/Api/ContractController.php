@@ -101,7 +101,7 @@ class ContractController extends Controller
 
     private function payload(Contract $contract, int $viewerId): array
     {
-        $contract->load(['job', 'client', 'freelancer', 'milestones', 'reviews.reviewer']);
+        $contract->load(['job', 'client', 'freelancer', 'milestones', 'reviews.reviewer', 'supportRequests.opener', 'supportRequests.handler']);
         $payload = $contract->toArray();
         $reviews = $contract->reviews;
         $bothReviewed = $reviews->count() === 2;

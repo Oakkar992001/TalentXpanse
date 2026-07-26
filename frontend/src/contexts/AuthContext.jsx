@@ -32,10 +32,16 @@ export function AuthProvider({ children }) {
       return data.user
     },
     login: async (payload) => finishAuth((await api.post('/auth/login', payload)).data),
+    adminLogin: async (payload) => finishAuth((await api.post('/admin/auth/login', payload)).data),
     register: async (payload) => finishAuth((await api.post('/auth/register', payload)).data),
     googleLogin: async (payload) => finishAuth((await api.post('/auth/google', payload)).data),
     addRole: async (role) => {
       const { data } = await api.post('/auth/roles', { role })
+      setUser(data.user)
+      return data.user
+    },
+    switchRole: async (role) => {
+      const { data } = await api.patch('/auth/active-role', { role })
       setUser(data.user)
       return data.user
     },

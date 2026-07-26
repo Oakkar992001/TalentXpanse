@@ -39,6 +39,7 @@ class AuthController extends Controller
 
             return $user;
         });
+        $user->sendEmailVerificationNotification();
 
         return response()->json([
             'token' => $user->createToken('talentxpanse-web')->plainTextToken,
@@ -58,10 +59,34 @@ class AuthController extends Controller
         if (! $user || ! Hash::check($data['password'], $user->password)) {
             return response()->json(['message' => 'The email or password is incorrect.'], 422);
         }
+        if ($user->status === 'suspended') {
+            return response()->json(['message' => 'This account has been suspended.'], 403);
+        }
 
         return response()->json([
             'token' => $user->createToken('talentxpanse-web')->plainTextToken,
             'user' => $this->userPayload($user->load('roles', 'freelancerProfile', 'clientProfile')),
+        ]);
+    }
+
+    public function adminLogin(Request $request)
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email'],
+            'password' => ['required', 'string'],
+        ]);
+        $user = User::where('email', $data['email'])->with('roles')->first();
+
+        if (! $user || ! Hash::check($data['password'], $user->password) || ! $user->hasRole('admin')) {
+            return response()->json(['message' => 'Administrator credentials are not valid.'], 422);
+        }
+        if ($user->status === 'suspended') {
+            return response()->json(['message' => 'This administrator account has been suspended.'], 403);
+        }
+
+        return response()->json([
+            'token' => $user->createToken('talentxpanse-admin', ['admin'])->plainTextToken,
+            'user' => $this->userPayload($user->load('freelancerProfile', 'clientProfile')),
         ]);
     }
 
@@ -96,6 +121,7 @@ class AuthController extends Controller
 
             return $user;
         });
+        abort_if($user->status === 'suspended', 403, 'This account has been suspended.');
 
         return response()->json([
             'token' => $user->createToken('talentxpanse-google')->plainTextToken,
@@ -119,6 +145,16 @@ class AuthController extends Controller
     {
         $data = $request->validate(['role' => ['required', 'in:client,freelancer']]);
         $this->attachRole($request->user(), $data['role']);
+        $request->user()->update(['active_role' => $data['role']]);
+
+        return ['user' => $this->userPayload($request->user()->fresh('roles', 'freelancerProfile', 'clientProfile'))];
+    }
+
+    public function setActiveRole(Request $request)
+    {
+        $role = $request->validate(['role' => ['required', 'in:client,freelancer']])['role'];
+        abort_unless($request->user()->hasRole($role), 403, 'That workspace is not enabled on this account.');
+        $request->user()->update(['active_role' => $role]);
 
         return ['user' => $this->userPayload($request->user()->fresh('roles', 'freelancerProfile', 'clientProfile'))];
     }
@@ -133,16 +169,29 @@ class AuthController extends Controller
         } else {
             ClientProfile::firstOrCreate(['user_id' => $user->id]);
         }
+
+        if (! $user->active_role) {
+            $user->update(['active_role' => $roleName]);
+        }
     }
 
     private function userPayload(User $user): array
     {
+        $roles = $user->roles->pluck('name')->values();
+        $activeRole = $roles->contains($user->active_role) ? $user->active_role : $roles->first();
+        if ($activeRole && $user->active_role !== $activeRole) {
+            $user->update(['active_role' => $activeRole]);
+        }
+
         return [
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
             'profile_photo_url' => $user->profile_photo_url,
-            'roles' => $user->roles->pluck('name')->values(),
+            'roles' => $roles,
+            'active_role' => $activeRole,
+            'email_verified' => filled($user->email_verified_at),
+            'account_status' => $user->status,
             'freelancer_profile' => $user->freelancerProfile,
             'client_profile' => $user->clientProfile,
         ];

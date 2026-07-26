@@ -12,6 +12,7 @@ export function PreferencesProvider({ children }) {
   }, [theme])
 
   useEffect(() => localStorage.setItem('tx-language', language), [language])
+  useEffect(() => { document.documentElement.lang = language === 'my' ? 'my' : 'en' }, [language])
 
   return <PreferencesContext.Provider value={{
     theme, language,

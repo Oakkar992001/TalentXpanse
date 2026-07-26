@@ -21,6 +21,13 @@ class DatabaseSeeder extends Seeder
     {
         $clientRole = Role::firstOrCreate(['name' => 'client']);
         $freelancerRole = Role::firstOrCreate(['name' => 'freelancer']);
+        $adminRole = Role::firstOrCreate(['name' => 'admin']);
+
+        $admin = User::firstOrCreate(
+            ['email' => 'admin@talentxpanse.test'],
+            ['name' => 'TalentXpanse Admin', 'password' => Hash::make('password')]
+        );
+        $admin->roles()->syncWithoutDetaching([$adminRole->id]);
 
         $client = User::firstOrCreate(
             ['email' => 'ayechan@talentxpanse.test'],

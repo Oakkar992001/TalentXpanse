@@ -45,4 +45,9 @@ class Contract extends Model
     {
         return $this->hasMany(ContractReview::class);
     }
+
+    public function supportRequests()
+    {
+        return $this->hasMany(ContractSupportRequest::class);
+    }
 }
