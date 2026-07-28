@@ -7,6 +7,7 @@ use App\Models\Contract;
 use App\Models\ContractMilestone;
 use App\Models\Conversation;
 use App\Models\ConversationEvent;
+use App\Services\MarketplacePaymentService;
 use App\Services\MarketplaceNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -24,14 +25,14 @@ class ContractController extends Controller
             ->get()];
     }
 
-    public function show(Request $request, Contract $contract)
+    public function show(Request $request, Contract $contract, MarketplacePaymentService $payments)
     {
         $this->authorizeParticipant($request, $contract);
 
-        return ['data' => $this->payload($contract, $request->user()->id)];
+        return ['data' => $this->payload($contract, $request->user()->id, $payments)];
     }
 
-    public function storeMilestone(Request $request, Contract $contract, MarketplaceNotificationService $notifications)
+    public function storeMilestone(Request $request, Contract $contract, MarketplaceNotificationService $notifications, MarketplacePaymentService $payments)
     {
         abort_unless($contract->client_id === $request->user()->id, 403, 'Only the client can create milestones.');
         abort_unless($contract->status === 'active', 422, 'This contract is no longer active.');
@@ -44,7 +45,12 @@ class ContractController extends Controller
         $allocated = $contract->milestones()->sum('amount');
         abort_if($allocated + $data['amount'] > $contract->agreed_amount, 422, 'Milestone amounts cannot exceed the agreed contract amount.');
 
-        $milestone = $contract->milestones()->create($data);
+        $quote = $payments->quote($data['amount']);
+        $milestone = $contract->milestones()->create($data + [
+            'platform_fee_basis_points' => $quote['platform_fee_basis_points'],
+            'client_fee_amount' => $quote['platform_fee_amount'],
+            'client_total_amount' => $quote['client_total_amount'],
+        ]);
         $this->event($contract, 'milestone_created', "Milestone created: {$milestone->title}");
         $notifications->send($contract->freelancer_id, 'milestone_created', 'New milestone created', "{$milestone->title} was added to {$contract->title}.", "/projects/{$contract->id}");
 
@@ -56,7 +62,7 @@ class ContractController extends Controller
         $contract = $milestone->contract;
         $this->authorizeParticipant($request, $contract);
         abort_unless($contract->status === 'active', 422, 'This contract is no longer active.');
-        $action = $request->validate(['action' => ['required', Rule::in(['start', 'submit', 'request_revision', 'approve'])]])['action'];
+        $action = $request->validate(['action' => ['required', Rule::in(['start', 'request_revision', 'approve'])]])['action'];
 
         if ($action === 'start') {
             abort_unless($contract->freelancer_id === $request->user()->id && $milestone->status === 'planned', 422, 'Only the freelancer can start a planned milestone.');
@@ -64,20 +70,21 @@ class ContractController extends Controller
             $this->event($contract, 'milestone_started', "Milestone started: {$milestone->title}");
             $notifications->send($contract->client_id, 'milestone_started', 'Milestone started', "{$milestone->title} is now in progress.", "/projects/{$contract->id}");
         }
-        if ($action === 'submit') {
-            abort_unless($contract->freelancer_id === $request->user()->id && in_array($milestone->status, ['planned', 'in_progress', 'revision_requested'], true), 422, 'This milestone cannot be submitted now.');
-            $milestone->update(['status' => 'submitted', 'submitted_at' => now()]);
-            $this->event($contract, 'milestone_submitted', "Milestone submitted for review: {$milestone->title}");
-            $notifications->send($contract->client_id, 'milestone_submitted', 'Milestone ready for review', "{$milestone->title} was submitted for your review.", "/projects/{$contract->id}");
-        }
         if ($action === 'request_revision') {
             abort_unless($contract->client_id === $request->user()->id && $milestone->status === 'submitted', 422, 'Only the client can request a revision for a submitted milestone.');
+            $revisionNote = $request->validate(['revision_note' => ['required', 'string', 'min:10', 'max:2000']])['revision_note'];
+            $submission = $milestone->submissions()->where('status', 'submitted')->first();
+            abort_unless($submission, 422, 'A delivery submission is required before requesting a revision.');
+            $submission->update(['status' => 'revision_requested', 'review_note' => $revisionNote, 'reviewed_by' => $request->user()->id, 'reviewed_at' => now()]);
             $milestone->update(['status' => 'revision_requested']);
             $this->event($contract, 'revision_requested', "Revision requested: {$milestone->title}");
             $notifications->send($contract->freelancer_id, 'revision_requested', 'Revision requested', "The client requested changes to {$milestone->title}.", "/projects/{$contract->id}");
         }
         if ($action === 'approve') {
             abort_unless($contract->client_id === $request->user()->id && $milestone->status === 'submitted', 422, 'Only the client can approve a submitted milestone.');
+            $submission = $milestone->submissions()->where('status', 'submitted')->first();
+            abort_unless($submission, 422, 'A delivery submission is required before approval.');
+            $submission->update(['status' => 'approved', 'reviewed_by' => $request->user()->id, 'reviewed_at' => now()]);
             $milestone->update(['status' => 'approved', 'approved_at' => now()]);
             $this->event($contract, 'milestone_approved', "Milestone approved: {$milestone->title}");
             $notifications->send($contract->freelancer_id, 'milestone_approved', 'Milestone approved', "{$milestone->title} was approved.", "/projects/{$contract->id}");
@@ -90,6 +97,7 @@ class ContractController extends Controller
     {
         abort_unless($contract->client_id === $request->user()->id, 403, 'Only the client can complete a contract.');
         abort_unless($contract->status === 'active', 422, 'This contract is no longer active.');
+        abort_if($contract->payment_hold_status === 'on_hold', 422, 'Resolve the active payment safety hold before completing this project.');
         abort_unless($contract->milestones()->exists() && ! $contract->milestones()->where('status', '!=', 'approved')->exists(), 422, 'Approve every milestone before completing this contract.');
 
         $contract->update(['status' => 'completed', 'completed_at' => now()]);
@@ -99,10 +107,15 @@ class ContractController extends Controller
         return ['data' => $contract->fresh('milestones')];
     }
 
-    private function payload(Contract $contract, int $viewerId): array
+    private function payload(Contract $contract, int $viewerId, MarketplacePaymentService $payments): array
     {
-        $contract->load(['job', 'client', 'freelancer', 'milestones', 'reviews.reviewer', 'supportRequests.opener', 'supportRequests.handler']);
+        $contract->load(['job', 'client', 'freelancer', 'milestones.submissions.files', 'milestones.submissions.submitter', 'milestones.submissions.reviewer', 'reviews.reviewer', 'supportRequests.opener', 'supportRequests.handler']);
         $payload = $contract->toArray();
+        $payload['payment_policy'] = $payments->policy();
+        $payload['payment_safety'] = $payments->safety($contract);
+        $payload['milestones'] = $contract->milestones->map(function (ContractMilestone $milestone) use ($payments) {
+            return [...$milestone->toArray(), 'payment_summary' => $payments->summary($milestone)];
+        })->values();
         $reviews = $contract->reviews;
         $bothReviewed = $reviews->count() === 2;
         $windowClosed = $contract->completed_at?->lte(now()->subDays(14)) ?? false;

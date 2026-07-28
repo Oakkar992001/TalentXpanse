@@ -9,9 +9,13 @@ use App\Models\ConversationMessage;
 use App\Models\FreelancerProfile;
 use App\Models\Job;
 use App\Models\MarketplaceReport;
+use App\Models\MarketplacePaymentRecord;
+use App\Models\MarketplaceAdminAuditLog;
 use App\Models\Proposal;
 use App\Models\User;
 use App\Services\MarketplaceNotificationService;
+use App\Services\MarketplacePaymentSafetyService;
+use App\Services\MarketplaceAdminAuditService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
@@ -30,6 +34,8 @@ class AdminController extends Controller
             'active_contracts' => Contract::where('status', 'active')->count(),
             'open_support_requests' => ContractSupportRequest::whereIn('status', ['open', 'under_review'])->count(),
             'open_reports' => MarketplaceReport::where('status', 'open')->count(),
+            'payment_holds' => Contract::where('payment_hold_status', 'on_hold')->count(),
+            'audit_entries' => MarketplaceAdminAuditLog::count(),
         ]];
     }
 
@@ -42,12 +48,17 @@ class AdminController extends Controller
         return ['data' => $users];
     }
 
-    public function updateUser(Request $request, User $user)
+    public function updateUser(Request $request, User $user, MarketplaceAdminAuditService $audit)
     {
         $this->ensureAdmin($request);
         abort_if($user->id === $request->user()->id, 422, 'You cannot suspend your own administrator account.');
         $data = $request->validate(['status' => ['required', Rule::in(['active', 'suspended'])]]);
         $user->update($data);
+
+        if ($user->status === 'suspended') {
+            $user->tokens()->delete();
+        }
+        $audit->log($request->user(), 'user.status_updated', $user, "User status changed to {$user->status}.", ['status' => $user->status]);
 
         return ['data' => $user->fresh('roles')];
     }
@@ -61,12 +72,13 @@ class AdminController extends Controller
         return ['data' => $jobs];
     }
 
-    public function updateJob(Request $request, Job $job)
+    public function updateJob(Request $request, Job $job, MarketplaceAdminAuditService $audit)
     {
         $this->ensureAdmin($request);
         $data = $request->validate(['status' => ['required', Rule::in(['open', 'paused', 'closed'])]]);
         abort_if(in_array($job->status, ['in_progress', 'completed'], true), 422, 'Contract jobs cannot be moderated from this action.');
         $job->update($data);
+        $audit->log($request->user(), 'job.status_updated', $job, "Job status changed to {$job->status}.", ['status' => $job->status]);
 
         return ['data' => $job->fresh('client.clientProfile')];
     }
@@ -81,11 +93,12 @@ class AdminController extends Controller
         return ['data' => $reports];
     }
 
-    public function updateReport(Request $request, MarketplaceReport $report)
+    public function updateReport(Request $request, MarketplaceReport $report, MarketplaceAdminAuditService $audit)
     {
         $this->ensureAdmin($request);
         $data = $request->validate(['status' => ['required', Rule::in(['reviewed', 'resolved', 'dismissed'])]]);
         $report->update($data + ['reviewed_by' => $request->user()->id, 'reviewed_at' => now()]);
+        $audit->log($request->user(), 'report.status_updated', $report, "Report status changed to {$report->status}.", ['status' => $report->status]);
 
         return ['data' => $report->fresh(['reporter', 'reviewer'])];
     }
@@ -103,7 +116,7 @@ class AdminController extends Controller
         return ['data' => $requests];
     }
 
-    public function updateSupportRequest(Request $request, ContractSupportRequest $supportRequest, MarketplaceNotificationService $notifications)
+    public function updateSupportRequest(Request $request, ContractSupportRequest $supportRequest, MarketplaceNotificationService $notifications, MarketplaceAdminAuditService $audit)
     {
         $this->ensureAdmin($request);
         $data = $request->validate([
@@ -113,10 +126,55 @@ class AdminController extends Controller
         abort_if(in_array($data['status'], ['resolved', 'dismissed'], true) && blank($data['resolution_note'] ?? null), 422, 'Add a short resolution note before closing a support request.');
 
         $supportRequest->update($data + ['handled_by' => $request->user()->id, 'handled_at' => now()]);
+        $audit->log($request->user(), 'support_request.status_updated', $supportRequest, "Support request status changed to {$supportRequest->status}.", ['status' => $supportRequest->status]);
         $status = str_replace('_', ' ', $supportRequest->status);
         $notifications->send($supportRequest->opened_by, 'project_support_updated', 'Project support request updated', "Your support request for {$supportRequest->contract->title} is now {$status}.", "/projects/{$supportRequest->contract_id}");
 
         return ['data' => $supportRequest->fresh(['contract', 'opener', 'handler'])];
+    }
+
+    public function paymentRecords(Request $request)
+    {
+        $this->ensureAdmin($request);
+
+        return ['data' => [
+            'payments_enabled' => config('marketplace_payments.enabled'),
+            'records' => MarketplacePaymentRecord::query()->with(['contract', 'milestone', 'client', 'freelancer'])->latest()->paginate(20),
+            'on_hold_contracts' => Contract::query()
+                ->where('payment_hold_status', 'on_hold')
+                ->with(['client.clientProfile', 'freelancer', 'paymentHoldHandler'])
+                ->latest('payment_hold_at')
+                ->get(),
+        ]];
+    }
+
+    public function auditLogs(Request $request)
+    {
+        $this->ensureAdmin($request);
+
+        return ['data' => MarketplaceAdminAuditLog::query()->with('administrator')->latest('created_at')->latest('id')->paginate(30)];
+    }
+
+    public function updatePaymentHold(Request $request, Contract $contract, MarketplacePaymentSafetyService $paymentSafety, MarketplaceNotificationService $notifications, MarketplaceAdminAuditService $audit)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'status' => ['required', Rule::in(['on_hold', 'clear'])],
+            'note' => ['required', 'string', 'min:10', 'max:2000'],
+        ]);
+        abort_if($data['status'] === 'clear' && $contract->supportRequests()->where('reason', 'payment_issue')->whereIn('status', ['open', 'under_review'])->exists(), 422, 'Resolve or dismiss the active payment support request before clearing this hold.');
+        $updated = $data['status'] === 'on_hold'
+            ? $paymentSafety->placeHold($contract, $request->user(), $data['note'])
+            : $paymentSafety->clearHold($contract, $request->user(), $data['note']);
+        $title = $updated->payment_hold_status === 'on_hold' ? 'Payment safety hold active' : 'Payment safety hold cleared';
+        $message = $updated->payment_hold_status === 'on_hold'
+            ? "TalentXpanse placed a payment safety hold on {$updated->title}."
+            : "TalentXpanse cleared the payment safety hold on {$updated->title}.";
+        $notifications->send($updated->client_id, 'payment_hold_updated', $title, $message, "/projects/{$updated->id}");
+        $notifications->send($updated->freelancer_id, 'payment_hold_updated', $title, $message, "/projects/{$updated->id}");
+        $audit->log($request->user(), "payment_hold.{$updated->payment_hold_status}", $updated, $data['note'], ['status' => $updated->payment_hold_status]);
+
+        return ['data' => $updated->load(['client', 'freelancer', 'paymentHoldHandler'])];
     }
 
     private function ensureAdmin(Request $request): void

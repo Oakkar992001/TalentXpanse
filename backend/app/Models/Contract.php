@@ -9,11 +9,11 @@ class Contract extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['job_id', 'proposal_id', 'client_id', 'freelancer_id', 'title', 'scope', 'agreed_amount', 'status', 'started_at', 'completed_at'];
+    protected $fillable = ['job_id', 'proposal_id', 'client_id', 'freelancer_id', 'title', 'scope', 'agreed_amount', 'status', 'payment_hold_status', 'payment_hold_note', 'payment_hold_at', 'payment_hold_by', 'started_at', 'completed_at'];
 
     protected function casts(): array
     {
-        return ['started_at' => 'datetime', 'completed_at' => 'datetime'];
+        return ['payment_hold_at' => 'datetime', 'started_at' => 'datetime', 'completed_at' => 'datetime'];
     }
 
     public function job()
@@ -49,5 +49,15 @@ class Contract extends Model
     public function supportRequests()
     {
         return $this->hasMany(ContractSupportRequest::class);
+    }
+
+    public function paymentRecords()
+    {
+        return $this->hasMany(MarketplacePaymentRecord::class);
+    }
+
+    public function paymentHoldHandler()
+    {
+        return $this->belongsTo(User::class, 'payment_hold_by');
     }
 }

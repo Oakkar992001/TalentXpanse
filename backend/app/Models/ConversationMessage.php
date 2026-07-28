@@ -20,4 +20,9 @@ class ConversationMessage extends Model
     {
         return $this->belongsTo(User::class, 'sender_id');
     }
+
+    public function files()
+    {
+        return $this->hasMany(ConversationMessageFile::class);
+    }
 }

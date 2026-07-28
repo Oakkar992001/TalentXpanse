@@ -7,9 +7,9 @@ import AccountMenu from '../components/AccountMenu'
 import GlobalSearch from '../components/GlobalSearch'
 import '../app-polish.css'
 
-const publicLinks = [['/jobs', 'Find freelance jobs'], ['/register?role=client', 'Hire freelancers'], ['/how-it-works', 'How it works']]
-const clientLinks = [['Overview', '/dashboard?role=client'], ['Messages', '/messages'], ['Projects', '/projects']]
-const freelancerLinks = [['Overview', '/dashboard?role=freelancer'], ['My profile', '/profile'], ['Messages', '/messages'], ['Projects', '/projects']]
+const publicLinks = [['/jobs', 'nav.explore_marketplace', 'Explore marketplace'], ['/how-it-works', 'nav.how_it_works', 'How it works'], ['/about', 'nav.why_talentxpanse', 'Why TalentXpanse']]
+const clientLinks = [['Overview', '/dashboard?role=client', 'nav.overview'], ['Messages', '/messages', 'nav.messages'], ['Projects', '/projects', 'nav.projects']]
+const freelancerLinks = [['Overview', '/dashboard?role=freelancer', 'nav.overview'], ['My profile', '/profile', 'nav.profile'], ['Messages', '/messages', 'nav.messages'], ['Projects', '/projects', 'nav.projects']]
 
 function Icon({ name }) {
   const paths = {
@@ -25,15 +25,35 @@ function Icon({ name }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name] || paths.overview}</svg>
 }
 
-function ThemeToggle() { const { theme, toggleTheme } = usePreferences(); const isLight = theme === 'light'; return <button className="theme-toggle theme-icon" onClick={toggleTheme} title={`Theme: ${isLight ? 'Light' : 'Dark'}. Click to switch.`} aria-label={`Theme: ${isLight ? 'Light' : 'Dark'}. Click to switch.`}><Icon name={isLight ? 'sun' : 'moon'} /></button> }
-function LanguageToggle() { const { language, toggleLanguage } = usePreferences(); const isEnglish = language === 'en'; return <button className="language-toggle preference-choice" onClick={toggleLanguage} title={`Language: ${isEnglish ? 'English' : 'Myanmar'}. Click to switch.`} aria-label={`Language: ${isEnglish ? 'English' : 'Myanmar'}. Click to switch.`}><span className={isEnglish ? 'active' : ''}>English</span><i>/</i><span className={!isEnglish ? 'active myanmar' : 'myanmar'}>မြန်မာ</span></button> }
-function UnreadBadge({ endpoint }) { const { user } = useAuth(); const [count, setCount] = useState(0); useEffect(() => { if (user) api.get(endpoint).then(({ data }) => setCount(data.data.unread_count ?? data.data.unread_messages ?? 0)).catch(() => setCount(0)) }, [endpoint, user]); return count > 0 ? <b>{count}</b> : null }
+function ThemeToggle() {
+  const { theme, t, toggleTheme } = usePreferences()
+  const isLight = theme === 'light'
+  const label = `${t('theme.light', 'Light')} / ${t('theme.dark', 'Dark')}`
+  return <button className="theme-toggle theme-icon" onClick={toggleTheme} title={`${label}. Click to switch.`} aria-label={`${label}. Click to switch.`}><Icon name={isLight ? 'sun' : 'moon'} /></button>
+}
+
+function LanguageToggle() {
+  const { language, toggleLanguage } = usePreferences()
+  const isEnglish = language === 'en'
+  return <button className="language-toggle preference-choice" onClick={toggleLanguage} title={`Language: ${isEnglish ? 'English' : 'Myanmar'}. Click to switch.`} aria-label={`Language: ${isEnglish ? 'English' : 'Myanmar'}. Click to switch.`}><span className={isEnglish ? 'active' : ''}>English</span><i>/</i><span className={!isEnglish ? 'active myanmar' : 'myanmar'}>မြန်မာ</span></button>
+}
+
+function UnreadBadge({ endpoint }) {
+  const { user } = useAuth()
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    if (!user?.id) return
+    api.get(endpoint).then(({ data }) => setCount(data.data.unread_count ?? data.data.unread_messages ?? 0)).catch(() => setCount(0))
+  }, [endpoint, user?.id])
+  return count > 0 ? <b>{count}</b> : null
+}
 
 function PublicHeader() {
   const { user, logout } = useAuth()
+  const { t } = usePreferences()
   const navigate = useNavigate()
   const signOut = async () => { if (!window.confirm('Log out of TalentXpanse on this device?')) return; await logout(); navigate('/') }
-  return <header className="site-header"><Link className="brand" to="/">Talent<span>Xpanse</span></Link><nav>{publicLinks.map(([to, label]) => <NavLink key={label} to={to}>{label}</NavLink>)}</nav><div className="header-actions"><LanguageToggle /><ThemeToggle />{user ? <><Link to={`/dashboard?role=${user.active_role || user.roles[0]}`} className="text-link">Open workspace</Link><button className="text-link" onClick={signOut}>Log out</button></> : <><Link to="/login" className="text-link">Log in</Link><Link to="/register" className="button button-primary button-small">Sign up</Link></>}</div></header>
+  return <header className="site-header"><Link className="brand" to="/">Talent<span>Xpanse</span></Link><nav>{publicLinks.map(([to, key, label]) => <NavLink key={key} to={to}>{t(key, label)}</NavLink>)}</nav><div className="header-actions"><LanguageToggle /><ThemeToggle />{user ? <><Link to={`/dashboard?role=${user.active_role || user.roles[0]}`} className="text-link">{t('nav.open_workspace', 'Open workspace')}</Link><button className="text-link" onClick={signOut}>{t('nav.logout', 'Log out')}</button></> : <><Link to="/login" className="text-link">{t('nav.login', 'Log in')}</Link><Link to="/register" className="button button-primary button-small">{t('nav.signup', 'Sign up')}</Link></>}</div></header>
 }
 
 function DashboardShell() {
@@ -43,19 +63,22 @@ function DashboardShell() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { user } = useAuth()
+  const { t } = usePreferences()
   const requestedRole = params.get('role')
   const role = user?.roles?.includes(requestedRole) ? requestedRole : (user?.active_role || user?.roles?.[0] || 'freelancer')
   const links = role === 'client' ? clientLinks : freelancerLinks
-  const title = pathname === '/messages' ? 'Messages' : pathname === '/notifications' ? 'Notifications' : pathname.startsWith('/settings') ? 'Settings' : pathname.startsWith('/projects') ? 'Projects' : pathname === '/profile' ? 'My profile' : pathname.startsWith('/search/jobs/') ? 'Job details' : pathname.startsWith('/search/freelancers/') ? 'Freelancer profile' : pathname.startsWith('/search') ? 'Search marketplace' : pathname === '/jobs' ? 'Find jobs' : role === 'client' ? 'Client workspace' : 'Freelancer workspace'
-  const nav = (_label, target) => navigate(target)
+  const defaultTitle = role === 'client' ? t('workspace.client', 'Client workspace') : t('workspace.freelancer', 'Freelancer workspace')
+  const title = pathname === '/messages' ? t('nav.messages', 'Messages') : pathname === '/notifications' ? t('nav.notifications', 'Notifications') : pathname.startsWith('/settings') ? t('nav.settings', 'Settings') : pathname.startsWith('/projects') ? t('nav.projects', 'Projects') : pathname === '/work' ? 'My work' : pathname === '/profile' ? t('nav.profile', 'My profile') : pathname.startsWith('/search/jobs/') ? 'Job details' : pathname.startsWith('/search/freelancers/') ? 'Freelancer profile' : pathname.startsWith('/search') ? 'Search marketplace' : pathname === '/jobs' ? t('nav.find_jobs', 'Find jobs') : defaultTitle
+  const subtitle = role === 'client' ? t('workspace.client_subtitle', 'Manage hiring and delivery in one place.') : t('workspace.freelancer_subtitle', 'Discover work and keep projects moving.')
+  const nav = (target) => navigate(target)
 
-  return <div className={`dashboard-shell ${collapsed ? 'sidebar-collapsed' : ''}`}><aside className="dashboard-sidebar"><div className="sidebar-top"><Link className="brand" to="/">Talent<span>Xpanse</span></Link><button className="sidebar-collapse" onClick={() => setCollapsed((value) => !value)} aria-label="Collapse sidebar">☰</button></div><nav className="dashboard-nav">{links.map(([label, target]) => <button key={label} className={pathname === target.split('?')[0] && (label !== 'Overview' || pathname === '/dashboard') ? 'active' : ''} onClick={() => nav(label, target)}><span><Icon name={label === 'Messages' ? 'messages' : label === 'Projects' ? 'projects' : label === 'My profile' ? 'settings' : 'overview'} /></span><em>{label}</em></button>)}</nav><div className="sidebar-bottom"><AccountMenu /><div className="sidebar-preferences"><div className="preference-row"><small>Language</small><LanguageToggle /></div><div className="preference-row"><small>Theme</small><ThemeToggle /></div></div></div></aside><main className="dashboard-main"><header className="dashboard-topbar"><div><h2>{title}</h2><p>{role === 'client' ? 'Manage hiring and delivery in one place.' : 'Discover work and keep projects moving.'}</p></div><div className="topbar-actions"><button className="topbar-search" onClick={() => setSearchOpen(true)}><span><Icon name="search" /></span> Search</button><Link className="topbar-icon" to="/notifications" aria-label="Notifications"><Icon name="bell" /><UnreadBadge endpoint="/notifications/summary" /></Link></div></header><Outlet context={{ role }} /></main><GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} /></div>
+  return <div className={`dashboard-shell ${collapsed ? 'sidebar-collapsed' : ''}`}><aside className="dashboard-sidebar"><div className="sidebar-top"><Link className="brand" to="/">Talent<span>Xpanse</span></Link><button className="sidebar-collapse" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>☰</button></div><nav className="dashboard-nav" aria-label="Workspace navigation">{links.map(([label, target, key]) => <button key={label} className={pathname === target.split('?')[0] && (label !== 'Overview' || pathname === '/dashboard') ? 'active' : ''} onClick={() => nav(target)}><span><Icon name={label === 'Messages' ? 'messages' : label === 'Projects' ? 'projects' : label === 'My profile' ? 'settings' : 'overview'} /></span><em>{t(key, label)}</em></button>)}</nav><div className="sidebar-bottom"><AccountMenu /><div className="sidebar-preferences"><div className="preference-row"><small>Language</small><LanguageToggle /></div><div className="preference-row"><small>Theme</small><ThemeToggle /></div></div></div></aside><main className="dashboard-main"><header className="dashboard-topbar"><div><h2>{title}</h2><p>{subtitle}</p></div><div className="topbar-actions"><button className="topbar-search" onClick={() => setSearchOpen(true)}><span><Icon name="search" /></span> {t('nav.search', 'Search')}</button><Link className="topbar-icon" to="/notifications" aria-label={t('nav.notifications', 'Notifications')}><Icon name="bell" /><UnreadBadge endpoint="/notifications/summary" /></Link><div className="mobile-preferences"><LanguageToggle /><ThemeToggle /></div></div></header><Outlet context={{ role }} /></main><GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} /></div>
 }
 
 export default function AppLayout() {
   const location = useLocation()
   const { user, loading } = useAuth()
-  const privatePath = ['/dashboard', '/profile', '/workspace-setup', '/messages', '/notifications'].includes(location.pathname) || location.pathname.startsWith('/search') || location.pathname.startsWith('/settings') || location.pathname.startsWith('/projects')
+  const privatePath = ['/dashboard', '/profile', '/workspace-setup', '/messages', '/notifications', '/work'].includes(location.pathname) || location.pathname.startsWith('/search') || location.pathname.startsWith('/settings') || location.pathname.startsWith('/projects')
   if (privatePath && loading) return <main className="simple-page"><p>Loading your workspace…</p></main>
   if (privatePath && !user) return <Navigate to={`/login?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`} replace />
   if (privatePath) return <DashboardShell />

@@ -101,8 +101,18 @@ class ProposalController extends Controller
 
     public function updateStatus(Request $request, Proposal $proposal, MarketplaceNotificationService $notifications)
     {
+        $data = $request->validate(['status' => ['required', Rule::in(['shortlisted', 'declined', 'hired', 'withdrawn'])]]);
+
+        if ($data['status'] === 'withdrawn') {
+            abort_unless($proposal->freelancer_id === $request->user()->id, 403, 'Only the freelancer can withdraw this proposal.');
+            abort_unless(in_array($proposal->status, ['submitted', 'shortlisted'], true), 422, 'Only an active proposal can be withdrawn.');
+            $proposal->update(['status' => 'withdrawn']);
+            $notifications->send($proposal->job->client_id, 'proposal_withdrawn', 'Proposal withdrawn', "{$request->user()->name} withdrew their proposal for {$proposal->job->title}.", "/jobs/{$proposal->job_id}");
+
+            return ['data' => $proposal->fresh('job')];
+        }
+
         abort_unless($proposal->job->client_id === $request->user()->id, 403, 'Only the job owner can manage proposals.');
-        $data = $request->validate(['status' => ['required', Rule::in(['shortlisted', 'declined', 'hired'])]]);
 
         if ($data['status'] === 'hired') {
             return $this->hire($proposal, $notifications);

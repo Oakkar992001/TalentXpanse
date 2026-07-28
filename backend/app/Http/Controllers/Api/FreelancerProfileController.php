@@ -4,19 +4,20 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\FreelancerProfile;
+use App\Services\ProfileReadinessService;
 use App\Services\TrustSummaryService;
 use Illuminate\Http\Request;
 
 class FreelancerProfileController extends Controller
 {
-    public function show(Request $request, TrustSummaryService $trust)
+    public function show(Request $request, TrustSummaryService $trust, ProfileReadinessService $readiness)
     {
         $this->ensureFreelancer($request);
 
-        return ['data' => $this->payload($request, $trust)];
+        return ['data' => $this->payload($request, $trust, $readiness)];
     }
 
-    public function update(Request $request, TrustSummaryService $trust)
+    public function update(Request $request, TrustSummaryService $trust, ProfileReadinessService $readiness)
     {
         $this->ensureFreelancer($request);
         $data = $request->validate([
@@ -30,20 +31,17 @@ class FreelancerProfileController extends Controller
         ]);
 
         $profile = FreelancerProfile::firstOrCreate(['user_id' => $request->user()->id]);
-        $completed = collect(['title', 'bio', 'hourly_rate', 'skills', 'location'])
-            ->filter(fn (string $field) => filled($data[$field] ?? null))
-            ->count();
-        $data['profile_completeness'] = min(100, $completed * 20);
         $profile->update($data);
 
-        return ['data' => $this->payload($request, $trust)];
+        return ['data' => $this->payload($request, $trust, $readiness)];
     }
 
-    private function payload(Request $request, TrustSummaryService $trust): array
+    private function payload(Request $request, TrustSummaryService $trust, ProfileReadinessService $readiness): array
     {
         $user = $request->user()->fresh()->load('freelancerProfile', 'portfolioItems', 'freelancerResume');
+        $checklist = $readiness->freelancerChecklist($user);
 
-        return [...$user->toArray(), 'trust_summary' => $trust->for($user)];
+        return [...$user->toArray(), 'trust_summary' => $trust->for($user), 'profile_checklist' => $checklist, 'profile_completeness' => $readiness->completion($checklist)];
     }
 
     private function ensureFreelancer(Request $request): void

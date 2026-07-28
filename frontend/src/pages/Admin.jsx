@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import AdminPaymentSafetyPanel from '../components/AdminPaymentSafetyPanel'
+import AdminAuditTrail from '../components/AdminAuditTrail'
 import '../admin.css'
 
 const label = (value) => String(value || '').replaceAll('_', ' ')
@@ -52,8 +54,9 @@ export function AdminDashboardScreen() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(null)
   const [resolutionNotes, setResolutionNotes] = useState({})
+  const [paymentData, setPaymentData] = useState(null)
   const isAdmin = user?.roles?.includes('admin')
-  const endpoint = tab === 'users' ? '/admin/users' : tab === 'jobs' ? '/admin/jobs' : tab === 'support' ? '/admin/support-requests' : '/admin/reports'
+  const endpoint = tab === 'users' ? '/admin/users' : tab === 'jobs' ? '/admin/jobs' : tab === 'support' ? '/admin/support-requests' : tab === 'payments' ? '/admin/payment-records' : tab === 'audit' ? '/admin/audit-logs' : '/admin/reports'
 
   const load = async () => {
     setError('')
@@ -61,7 +64,11 @@ export function AdminDashboardScreen() {
       const requests = tab === 'overview' ? [api.get('/admin/dashboard')] : [api.get('/admin/dashboard'), api.get(endpoint)]
       const responses = await Promise.all(requests)
       setDashboard(responses[0].data.data)
-      if (responses[1]) setItems(responses[1].data.data.data || [])
+      if (responses[1]) {
+        const payload = responses[1].data.data
+        if (tab === 'payments') setPaymentData(payload)
+        else setItems(payload.data || [])
+      }
     } catch (requestError) {
       setError(errorMessage(requestError))
     }
@@ -91,13 +98,13 @@ export function AdminDashboardScreen() {
 
   return <div className="admin-shell"><aside>
     <div className="admin-brand">Talent<span>Xpanse</span><small>Operations</small></div>
-    <nav>{[['overview', 'Overview'], ['reports', 'Reports'], ['support', 'Project support'], ['jobs', 'Jobs'], ['users', 'Users']].map(([value, title]) => <button key={value} className={tab === value ? 'active' : ''} onClick={() => setTab(value)}>{title}</button>)}</nav>
+    <nav>{[['overview', 'Overview'], ['reports', 'Reports'], ['support', 'Project support'], ['payments', 'Payment safety'], ['audit', 'Audit trail'], ['jobs', 'Jobs'], ['users', 'Users']].map(([value, title]) => <button key={value} className={tab === value ? 'active' : ''} onClick={() => setTab(value)}>{title}</button>)}</nav>
     <div className="admin-account"><b>{user.name}</b><small>{user.email}</small><button onClick={signOut}>Log out</button></div>
   </aside><main>
     <header><div><p className="eyebrow">Administrator console</p><h1>{tab === 'overview' ? 'Marketplace overview' : label(tab)}</h1></div><span className="admin-status">Platform monitoring</span></header>
     {error && <p className="form-notice">{error}</p>}
     {!dashboard ? <p className="admin-loading">Loading operational data…</p> : <>
-      {tab === 'overview' && <section className="admin-metrics">{[['Users', dashboard.users], ['Open jobs', dashboard.open_jobs], ['Proposals', dashboard.proposals], ['Active contracts', dashboard.active_contracts], ['Content reports', dashboard.open_reports], ['Project support', dashboard.open_support_requests], ['Suspended users', dashboard.suspended_users]].map(([name, value]) => <article key={name}><small>{name}</small><b>{value}</b></article>)}</section>}
+      {tab === 'overview' && <section className="admin-metrics">{[['Users', dashboard.users], ['Open jobs', dashboard.open_jobs], ['Proposals', dashboard.proposals], ['Active contracts', dashboard.active_contracts], ['Content reports', dashboard.open_reports], ['Project support', dashboard.open_support_requests], ['Payment holds', dashboard.payment_holds], ['Audit entries', dashboard.audit_entries], ['Suspended users', dashboard.suspended_users]].map(([name, value]) => <article key={name}><small>{name}</small><b>{value}</b></article>)}</section>}
 
       {tab === 'reports' && <section className="admin-table"><p>Review the reported item before resolving the report. Account and content actions remain deliberate, separate decisions.</p>
         {items.length ? <table><thead><tr><th>Reported item</th><th>Reason</th><th>Reporter</th><th>Status</th><th>Action</th></tr></thead><tbody>{items.map((report) => <tr key={report.id}>
@@ -118,6 +125,10 @@ export function AdminDashboardScreen() {
           <td><div>{request.status === 'open' && <button disabled={busy === `/admin/support-requests/${request.id}`} onClick={() => action(`/admin/support-requests/${request.id}`, { status: 'under_review' })}>Start review</button>}{request.status === 'under_review' && <><textarea aria-label={`Resolution note for support request ${request.id}`} value={resolutionNotes[request.id] || ''} onChange={(event) => setResolutionNotes({ ...resolutionNotes, [request.id]: event.target.value })} placeholder="Closing note for both partners" maxLength="2000" /><button disabled={busy === `/admin/support-requests/${request.id}` || !(resolutionNotes[request.id] || '').trim()} onClick={() => action(`/admin/support-requests/${request.id}`, { status: 'resolved', resolution_note: resolutionNotes[request.id] })}>Resolve</button><button disabled={busy === `/admin/support-requests/${request.id}` || !(resolutionNotes[request.id] || '').trim()} onClick={() => action(`/admin/support-requests/${request.id}`, { status: 'dismissed', resolution_note: resolutionNotes[request.id] })}>Dismiss</button></>}</div></td>
         </tr>)}</tbody></table> : <p className="admin-empty">No project support requests need review.</p>}
       </section>}
+
+      {tab === 'payments' && <AdminPaymentSafetyPanel data={paymentData} busy={busy} onAction={action} />}
+
+      {tab === 'audit' && <AdminAuditTrail entries={items} />}
 
       {tab === 'jobs' && <section className="admin-table"><p>Pause or close problematic job posts. Contract jobs cannot be changed here.</p>
         {items.length ? <table><thead><tr><th>Job</th><th>Client</th><th>Proposals</th><th>Status</th><th>Action</th></tr></thead><tbody>{items.map((job) => <tr key={job.id}><td>{job.title}</td><td>{job.client?.client_profile?.company_name || job.client?.name}</td><td>{job.proposals_count}</td><td><span className={`admin-pill ${job.status}`}>{label(job.status)}</span></td><td><div>{job.status === 'open' && <button disabled={busy === `/admin/jobs/${job.id}`} onClick={() => action(`/admin/jobs/${job.id}`, { status: 'paused' })}>Pause</button>}{['open', 'paused'].includes(job.status) && <button disabled={busy === `/admin/jobs/${job.id}`} onClick={() => action(`/admin/jobs/${job.id}`, { status: 'closed' })}>Close</button>}</div></td></tr>)}</tbody></table> : <p className="admin-empty">No jobs match this view.</p>}

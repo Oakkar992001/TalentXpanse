@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Conversation;
 use App\Models\ConversationEvent;
+use App\Models\ConversationMessageFile;
 use App\Models\Proposal;
+use App\Services\ConversationMessageService;
 use App\Services\MarketplaceNotificationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class ConversationController extends Controller
 {
@@ -44,7 +47,7 @@ class ConversationController extends Controller
         $this->authorizeParticipant($request, $conversation);
         $this->markRead($conversation, $request->user());
 
-        $messages = $conversation->messages()->with('sender')->oldest()->get()->map(fn ($message) => $message->setAttribute('kind', 'message'));
+        $messages = $conversation->messages()->with(['sender', 'files'])->oldest()->get()->map(fn ($message) => $message->setAttribute('kind', 'message'));
         $events = ConversationEvent::where('conversation_id', $conversation->id)->oldest()->get()->map(fn (ConversationEvent $event) => [
             'id' => "event-{$event->id}",
             'sender_id' => null,
@@ -58,17 +61,32 @@ class ConversationController extends Controller
         ]];
     }
 
-    public function storeMessage(Request $request, Conversation $conversation, MarketplaceNotificationService $notifications)
+    public function storeMessage(Request $request, Conversation $conversation, ConversationMessageService $messages, MarketplaceNotificationService $notifications)
     {
         $this->authorizeParticipant($request, $conversation);
-        $data = $request->validate(['body' => ['required', 'string', 'max:4000']]);
-        $message = $conversation->messages()->create(['sender_id' => $request->user()->id, 'body' => $data['body']]);
-        $conversation->update(['last_message_at' => now()]);
+        $data = $request->validate([
+            'body' => ['nullable', 'string', 'max:4000'],
+            'files' => ['nullable', 'array', 'max:5'],
+            'files.*' => ['file', 'max:20480', 'mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,zip,txt,csv,jpg,jpeg,png,webp'],
+        ]);
+        abort_if(blank($data['body'] ?? null) && ! $request->hasFile('files'), 422, 'Write a message or attach at least one file.');
+        $message = $messages->create($conversation, $request->user(), $data['body'] ?? null, $request->file('files', []));
         $this->markRead($conversation, $request->user());
         $recipientId = $conversation->client_id === $request->user()->id ? $conversation->freelancer_id : $conversation->client_id;
-        $notifications->send($recipientId, 'message_received', 'New message', "{$request->user()->name}: ".str($message->body)->limit(120), '/messages');
+        $preview = $message->body ?: 'Shared a file';
+        $notifications->send($recipientId, 'message_received', 'New message', "{$request->user()->name}: ".str($preview)->limit(120), '/messages');
 
-        return response()->json(['data' => $message->load('sender')], 201);
+        return response()->json(['data' => $message], 201);
+    }
+
+    public function downloadFile(Request $request, ConversationMessageFile $file)
+    {
+        $file->load('message.conversation');
+        $conversation = $file->message?->conversation;
+        abort_unless($conversation && $conversation->involves($request->user()), 403, 'You are not part of this conversation.');
+        abort_unless(Storage::disk('local')->exists($file->storage_path), 404, 'This message file is no longer available.');
+
+        return Storage::disk('local')->download($file->storage_path, $file->original_name);
     }
 
     public function summary(Request $request)

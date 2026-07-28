@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\NotificationPreferenceController;
 use App\Http\Controllers\Api\MarketplaceSearchController;
 use App\Http\Controllers\Api\MarketplaceSaveController;
 use App\Http\Controllers\Api\MarketplaceReportController;
+use App\Http\Controllers\Api\MilestoneSubmissionController;
 use App\Http\Controllers\Api\PortfolioController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\PasswordResetController;
@@ -39,7 +40,7 @@ Route::get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 've
 
 Route::get('/jobs', [JobController::class, 'index']);
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
     Route::get('/auth/user', [AuthController::class, 'user']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/email/verification-notification', [EmailVerificationController::class, 'send'])->middleware('throttle:6,1');
@@ -67,6 +68,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/admin/reports/{report}', [AdminController::class, 'updateReport']);
     Route::get('/admin/support-requests', [AdminController::class, 'supportRequests']);
     Route::patch('/admin/support-requests/{supportRequest}', [AdminController::class, 'updateSupportRequest']);
+    Route::get('/admin/payment-records', [AdminController::class, 'paymentRecords']);
+    Route::get('/admin/audit-logs', [AdminController::class, 'auditLogs']);
+    Route::patch('/admin/contracts/{contract}/payment-hold', [AdminController::class, 'updatePaymentHold']);
     Route::get('/notifications', [MarketplaceNotificationController::class, 'index']);
     Route::get('/notification-preferences', [NotificationPreferenceController::class, 'show']);
     Route::put('/notification-preferences', [NotificationPreferenceController::class, 'update']);
@@ -78,10 +82,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/conversations/startable-proposals', [ConversationController::class, 'startableProposals']);
     Route::get('/conversations/{conversation}', [ConversationController::class, 'show']);
     Route::post('/conversations/{conversation}/messages', [ConversationController::class, 'storeMessage']);
+    Route::get('/conversation-message-files/{file}/download', [ConversationController::class, 'downloadFile']);
     Route::get('/contracts', [ContractController::class, 'index']);
     Route::get('/contracts/{contract}', [ContractController::class, 'show']);
     Route::post('/contracts/{contract}/milestones', [ContractController::class, 'storeMilestone']);
     Route::patch('/milestones/{milestone}', [ContractController::class, 'updateMilestone']);
+    Route::post('/milestones/{milestone}/submissions', [MilestoneSubmissionController::class, 'store']);
+    Route::get('/milestone-submission-files/{file}/download', [MilestoneSubmissionController::class, 'download']);
     Route::post('/contracts/{contract}/complete', [ContractController::class, 'complete']);
     Route::post('/contracts/{contract}/reviews', [ContractReviewController::class, 'store']);
     Route::post('/contracts/{contract}/support-requests', [ContractSupportRequestController::class, 'store']);
