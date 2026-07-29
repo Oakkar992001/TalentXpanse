@@ -15,12 +15,21 @@ class FreelancerResumeController extends Controller
         $this->ensureFreelancer($request);
         $request->validate(['resume' => ['required', 'file', 'mimes:pdf', 'max:10240']]);
         $file = $request->file('resume');
-        $path = $file->store("resumes/{$request->user()->id}", 'public');
+        $existing = FreelancerResume::where('user_id', $request->user()->id)->first();
+        $path = $file->store("resumes/{$request->user()->id}", 'local');
         $resume = FreelancerResume::updateOrCreate(['user_id' => $request->user()->id], [
             'original_name' => $file->getClientOriginalName(),
             'storage_path' => $path,
             'file_size' => $file->getSize(),
         ]);
+
+        if ($existing && $existing->storage_path !== $path) {
+            foreach (['local', 'public'] as $disk) {
+                if (Storage::disk($disk)->exists($existing->storage_path)) {
+                    Storage::disk($disk)->delete($existing->storage_path);
+                }
+            }
+        }
 
         return response()->json(['data' => $resume], 201);
     }
@@ -30,9 +39,10 @@ class FreelancerResumeController extends Controller
         $isOwner = $proposal->freelancer_id === $request->user()->id;
         $isClient = $proposal->job->client_id === $request->user()->id;
         abort_unless($isOwner || $isClient, 403);
-        abort_unless($proposal->resume_path && Storage::disk('public')->exists($proposal->resume_path), 404, 'This CV is no longer available.');
+        $disk = Storage::disk('local')->exists($proposal->resume_path) ? 'local' : 'public';
+        abort_unless($proposal->resume_path && Storage::disk($disk)->exists($proposal->resume_path), 404, 'This CV is no longer available.');
 
-        return Storage::disk('public')->download($proposal->resume_path, $proposal->resume_name);
+        return Storage::disk($disk)->download($proposal->resume_path, $proposal->resume_name);
     }
 
     private function ensureFreelancer(Request $request): void

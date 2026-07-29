@@ -25,6 +25,13 @@ class AccountSettingsController extends Controller
     private function payload(Request $request, TrustSummaryService $trust, ProfileReadinessService $readiness): array
     {
         $user = $request->user()->fresh()->load('roles', 'freelancerProfile', 'clientProfile', 'oauthIdentities', 'portfolioItems', 'freelancerResume');
+        $user->clientProfile?->makeVisible([
+            'billing_verified',
+            'company_verification_note',
+            'company_verification_requested_at',
+            'company_verified_at',
+            'company_verified_by',
+        ]);
         $roles = $user->roles->pluck('name')->values();
         $activeRole = $roles->contains($user->active_role) ? $user->active_role : $roles->first();
 
@@ -40,6 +47,9 @@ class AccountSettingsController extends Controller
             'email_verified' => filled($user->email_verified_at),
             'password_login_enabled' => $user->oauthIdentities->isEmpty(),
             'account_status' => $user->status,
+            'identity_verification_status' => $user->identity_verification_status,
+            'identity_verification_note' => $user->identity_verification_note,
+            'identity_verification_requested_at' => $user->identity_verification_requested_at,
             'active_role' => $activeRole,
             'roles' => $roles,
             'freelancer_profile' => $user->freelancerProfile,

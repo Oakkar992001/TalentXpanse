@@ -9,11 +9,11 @@ class Contract extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['job_id', 'proposal_id', 'client_id', 'freelancer_id', 'title', 'scope', 'agreed_amount', 'status', 'payment_hold_status', 'payment_hold_note', 'payment_hold_at', 'payment_hold_by', 'started_at', 'completed_at'];
+    protected $fillable = ['job_id', 'proposal_id', 'client_id', 'freelancer_id', 'title', 'scope', 'agreed_amount', 'status', 'payment_hold_status', 'payment_hold_note', 'payment_hold_at', 'payment_hold_by', 'started_at', 'completed_at', 'freelancer_completion_requested_at', 'freelancer_completion_note', 'closed_by', 'close_reason', 'closed_at'];
 
     protected function casts(): array
     {
-        return ['payment_hold_at' => 'datetime', 'started_at' => 'datetime', 'completed_at' => 'datetime'];
+        return ['payment_hold_at' => 'datetime', 'started_at' => 'datetime', 'completed_at' => 'datetime', 'freelancer_completion_requested_at' => 'datetime', 'closed_at' => 'datetime'];
     }
 
     public function job()
@@ -59,5 +59,15 @@ class Contract extends Model
     public function paymentHoldHandler()
     {
         return $this->belongsTo(User::class, 'payment_hold_by');
+    }
+
+    public function scopeChangeRequests()
+    {
+        return $this->hasMany(ContractScopeChangeRequest::class)->latest();
+    }
+
+    public function closer()
+    {
+        return $this->belongsTo(User::class, 'closed_by');
     }
 }

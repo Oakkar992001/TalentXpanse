@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import SettingsSidebar from '../components/SettingsSidebar'
 import PasswordSecuritySettings from '../components/PasswordSecuritySettings'
 import NotificationSettings from '../components/NotificationSettings'
+import VerificationSettings from '../components/VerificationSettings'
 import '../settings.css'
 
 const roleName = (role) => role === 'client' ? 'Client' : 'Freelancer'
@@ -14,6 +15,7 @@ const pageTitle = {
   account: 'Account settings',
   security: 'Password and security',
   notifications: 'Notification settings',
+  verification: 'Identity and verification',
   credits: 'Membership and credits',
 }
 
@@ -122,6 +124,8 @@ export default function SettingsScreen({ section = 'information' }) {
 
   const missingRole = account?.roles?.includes('client') ? (account.roles.includes('freelancer') ? null : 'freelancer') : 'client'
   const profileCompletion = account?.active_role === 'freelancer' ? account?.freelancer_profile?.profile_completeness || 0 : null
+
+  if (section === 'verification') return <section className="settings-page"><header><p className="eyebrow">Settings</p><h1>{pageTitle.verification}</h1><p>Manage the manual verification steps that support a safer marketplace.</p></header><div className="settings-layout"><SettingsSidebar /><main><VerificationSettings account={account} onRefresh={load} /></main></div></section>
 
   return <section className="settings-page">
     <header><p className="eyebrow">Settings</p><h1>{pageTitle[section] || pageTitle.information}</h1><p>Keep your account details and marketplace workspace accurate.</p></header>

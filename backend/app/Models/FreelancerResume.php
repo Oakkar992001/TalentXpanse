@@ -11,6 +11,8 @@ class FreelancerResume extends Model
 
     protected $fillable = ['user_id', 'original_name', 'storage_path', 'file_size'];
 
+    protected $hidden = ['storage_path'];
+
     public function user()
     {
         return $this->belongsTo(User::class);

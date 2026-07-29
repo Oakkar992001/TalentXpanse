@@ -10,6 +10,7 @@ export default function SettingsSidebar() {
     ['/settings', 'My Information'],
     ['/settings/account', 'Account Settings'],
     ['/settings/security', 'Password & Security'],
+    ['/settings/verification', 'Identity & Verification'],
     ['/settings/notifications', 'Notification Settings'],
   ]
 

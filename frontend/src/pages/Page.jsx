@@ -122,12 +122,23 @@ function ContactPage() {
   return <section className="guest-info-page contact-page">
     <header><p className="eyebrow">Contact and support</p><h1>Support that respects your work.</h1><p>We are preparing a dedicated support experience alongside live payments and account-verification processes.</p></header>
     <div className="contact-expectation"><div><b>What you can do today</b><p>Create an account to explore the marketplace, build a profile, post a job, or follow an active project.</p></div><div><b>What comes next</b><p>In-product support, payment assistance, and account-verification help will launch with the relevant live features.</p></div></div>
-    <div className="guest-page-actions"><Link className="button button-primary" to="/register">Create an account</Link><Link className="button button-outline" to="/how-it-works">Learn the workflow</Link></div>
+    <div className="guest-page-actions"><Link className="button button-primary" to="/register">Create an account</Link><Link className="button button-outline" to="/how-it-works">Learn the workflow</Link></div><div className="guest-inline-actions"><Link to="/terms">Terms of use</Link><Link to="/privacy">Privacy</Link><Link to="/marketplace-rules">Marketplace rules</Link></div>
   </section>
+}
+
+function PolicyPage({ type }) {
+  const content = {
+    Terms: ['Terms of use', 'Clear rules help TalentXpanse remain fair for clients and freelancers.', ['Use TalentXpanse honestly and keep account information accurate.', 'Keep proposals, project scope, delivery, and payments on the platform when features are available.', 'Do not post illegal, misleading, discriminatory, or abusive content.', 'TalentXpanse may restrict content or accounts that break marketplace rules.']],
+    Privacy: ['Privacy', 'We collect only the data needed to operate a marketplace safely and improve the service.', ['Your profile and portfolio details may be visible where you choose to make them public.', 'Private messages, delivery files, account records, and verification requests are handled as restricted marketplace data.', 'Payment and identity data will receive additional safeguards before those services launch.']],
+    MarketplaceRules: ['Marketplace rules', 'Professional, documented collaboration protects both sides of a project.', ['Write clear job posts and proposals. Do not misrepresent skills, experience, work, or identity.', 'Use milestones, documented revisions, scope changes, and support requests to resolve project issues.', 'Do not ask another person to make an off-platform payment or share sensitive verification documents through chat.']],
+  }[type]
+
+  return <section className="guest-info-page policy-page"><header><p className="eyebrow">TalentXpanse policies</p><h1>{content[0]}</h1><p>{content[1]}</p></header><ol className="policy-list">{content[2].map((item, index) => <li key={item}><span>{String(index + 1).padStart(2, '0')}</span><p>{item}</p></li>)}</ol><div className="guest-page-actions"><Link className="button button-primary" to="/how-it-works">See how the marketplace works</Link><Link className="button button-outline" to="/contact">Contact and support</Link></div></section>
 }
 
 export default function Page({ name }) {
   if (name === 'Home') return <HomePage />
   if (name === 'HowItWorks') return <HowItWorks />
+  if (['Terms', 'Privacy', 'MarketplaceRules'].includes(name)) return <PolicyPage type={name} />
   return name === 'About' ? <AboutPage /> : <ContactPage />
 }

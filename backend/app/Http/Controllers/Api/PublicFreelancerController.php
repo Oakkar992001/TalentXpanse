@@ -12,9 +12,29 @@ class PublicFreelancerController extends Controller
     {
         abort_unless($user->freelancerProfile()->exists(), 404, 'Freelancer profile not found.');
         $user->load('freelancerProfile', 'portfolioItems');
-        $data = $user->toArray();
-        $data['trust_summary'] = $trust->for($user);
+        $profile = $user->freelancerProfile;
 
-        return ['data' => $data];
+        return ['data' => [
+            'id' => $user->id,
+            'name' => $user->name,
+            'profile_photo_url' => $user->profile_photo_url,
+            'freelancer_profile' => [
+                'id' => $profile->id,
+                'title' => $profile->title,
+                'bio' => $profile->bio,
+                'hourly_rate' => $profile->hourly_rate,
+                'availability' => $profile->availability,
+                'skills' => $profile->skills,
+                'location' => $profile->location,
+            ],
+            'portfolio_items' => $user->portfolioItems->map(fn ($item) => [
+                'id' => $item->id,
+                'title' => $item->title,
+                'description' => $item->description,
+                'project_url' => $item->project_url,
+                'image_url' => $item->image_url,
+            ])->values(),
+            'trust_summary' => $trust->for($user),
+        ]];
     }
 }

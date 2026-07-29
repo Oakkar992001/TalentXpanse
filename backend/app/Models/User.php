@@ -28,6 +28,11 @@ class User extends Authenticatable implements MustVerifyEmail
         'active_role',
         'password',
         'status',
+        'identity_verification_status',
+        'identity_verification_note',
+        'identity_verification_requested_at',
+        'identity_verified_at',
+        'identity_verified_by',
         'notification_preferences',
     ];
 
@@ -41,6 +46,17 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $hidden = [
         'password',
         'remember_token',
+        'email',
+        'email_verified_at',
+        'profile_photo_path',
+        'active_role',
+        'status',
+        'identity_verification_status',
+        'identity_verification_note',
+        'identity_verification_requested_at',
+        'identity_verified_at',
+        'identity_verified_by',
+        'notification_preferences',
     ];
 
     /**
@@ -54,6 +70,8 @@ class User extends Authenticatable implements MustVerifyEmail
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'notification_preferences' => 'array',
+            'identity_verification_requested_at' => 'datetime',
+            'identity_verified_at' => 'datetime',
         ];
     }
 
@@ -100,6 +118,21 @@ class User extends Authenticatable implements MustVerifyEmail
     public function savedTalent()
     {
         return $this->hasMany(MarketplaceSavedTalent::class);
+    }
+
+    public function savedSearches()
+    {
+        return $this->hasMany(MarketplaceSavedSearch::class);
+    }
+
+    public function freelancerInvites()
+    {
+        return $this->hasMany(MarketplaceFreelancerInvite::class, 'freelancer_id');
+    }
+
+    public function identityVerifier()
+    {
+        return $this->belongsTo(self::class, 'identity_verified_by');
     }
 
     public function portfolioItems()

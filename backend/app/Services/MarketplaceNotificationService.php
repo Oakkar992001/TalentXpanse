@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\MarketplaceNotification;
 use App\Models\User;
+use App\Notifications\MarketplaceActivityEmail;
 
 class MarketplaceNotificationService
 {
@@ -21,13 +22,32 @@ class MarketplaceNotificationService
             'body' => $body,
             'url' => $url,
         ]);
+        if ($this->emailEnabled($recipient, $type)) {
+            $recipient->notify(new MarketplaceActivityEmail($title, $body, $url));
+        }
     }
 
     private function isEnabled(User $user, string $type): bool
     {
-        $category = str_starts_with($type, 'message_') ? 'messages' : (str_starts_with($type, 'proposal_') ? 'proposals' : 'projects');
-        $preferences = array_replace(['messages' => true, 'proposals' => true, 'projects' => true], $user->notification_preferences ?: []);
+        $category = $this->category($type);
+        $preferences = array_replace(['messages' => true, 'proposals' => true, 'projects' => true, 'job_alerts' => true, 'email_updates' => false], $user->notification_preferences ?: []);
 
         return $preferences[$category];
+    }
+
+    private function emailEnabled(User $user, string $type): bool
+    {
+        $preferences = array_replace(['email_updates' => false], $user->notification_preferences ?: []);
+
+        return config('marketplace_notifications.email_enabled') && $preferences['email_updates'] && $this->isEnabled($user, $type);
+    }
+
+    private function category(string $type): string
+    {
+        if ($type === 'job_alert') return 'job_alerts';
+        if (str_starts_with($type, 'message_')) return 'messages';
+        if (str_starts_with($type, 'proposal_') || str_starts_with($type, 'freelancer_invite')) return 'proposals';
+
+        return 'projects';
     }
 }

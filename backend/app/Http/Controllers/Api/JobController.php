@@ -25,9 +25,7 @@ class JobController extends Controller
             $query->where('category', $request->string('category'));
         }
 
-        if (! $request->boolean('include_closed')) {
-            $query->where('status', 'open');
-        }
+        $query->where('status', 'open');
 
         $jobs = $query->paginate(12);
         $jobs->getCollection()->each(fn (Job $job) => $job->client?->setAttribute('trust_summary', $trust->for($job->client)));
@@ -37,6 +35,7 @@ class JobController extends Controller
 
     public function show(Job $job, TrustSummaryService $trust)
     {
+        abort_unless($job->status === 'open', 404, 'Job not found.');
         $job->load(['client.clientProfile'])->loadCount('proposals');
         $job->client?->setAttribute('trust_summary', $trust->for($job->client));
 
@@ -54,8 +53,8 @@ class JobController extends Controller
     public function update(Request $request, Job $job)
     {
         abort_unless($job->client_id === $request->user()->id, 403, 'Only the job owner can update this job.');
+        abort_if(in_array($job->status, ['in_progress', 'completed', 'cancelled'], true), 422, 'This job is managed through its project and cannot be edited.');
         $data = $this->validated($request, false);
-        abort_if(($data['status'] ?? null) === 'open' && $job->status === 'in_progress', 422, 'A job cannot be reopened after hiring a freelancer.');
         $job->update($data);
 
         return ['data' => $job->fresh(['client.clientProfile'])];
@@ -76,6 +75,7 @@ class JobController extends Controller
     private function validated(Request $request, bool $creating = true): array
     {
         $required = $creating ? 'required' : 'sometimes';
+        $allowedStatuses = $creating ? 'in:draft,open' : 'in:draft,open,paused,closed';
 
         return $request->validate([
             'title' => [$required, 'string', 'max:180'],
@@ -88,7 +88,7 @@ class JobController extends Controller
             'budget_type' => ['sometimes', 'in:fixed,hourly'],
             'duration' => ['nullable', 'string', 'max:80'],
             'experience_level' => ['sometimes', 'in:entry,intermediate,expert'],
-            'status' => ['sometimes', 'in:draft,open,paused,closed,in_progress,completed,cancelled'],
+            'status' => ['sometimes', $allowedStatuses],
         ]);
     }
 }

@@ -3,7 +3,8 @@ import { PreferencesProvider } from './contexts/PreferencesContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import AppLayout from './layouts/AppLayout'
 import Page from './pages/Page'
-import { AuthScreen, DashboardScreen, JobDetailScreen, JobsScreen } from './pages/Marketplace'
+import { AuthScreen, JobDetailScreen, JobsScreen } from './pages/Marketplace'
+import DashboardScreen from './pages/Dashboard'
 import ProfileScreen from './pages/Profile'
 import WorkspaceSetupScreen from './pages/WorkspaceSetup'
 import MessagesScreen from './pages/Messages'
@@ -14,6 +15,7 @@ import SettingsScreen from './pages/Settings'
 import PasswordRecoveryScreen from './pages/PasswordRecovery'
 import SearchResultsScreen from './pages/WorkspaceDiscovery'
 import WorkManagementScreen from './pages/WorkManagement'
+import ProposalManagerScreen from './pages/ProposalManager'
 import { AdminDashboardScreen, AdminLoginScreen } from './pages/Admin'
 
 function GuestOnly({ children, redirectTo }) {
@@ -47,6 +49,9 @@ function App() {
     <Route path="/admin" element={<AdminDashboardScreen />} />
     <Route element={<AppLayout />}>
       {pages.map(([path, name]) => <Route key={path} path={path} element={<GuestOnly><Page name={name} /></GuestOnly>} />)}
+      <Route path="/terms" element={<GuestOnly><Page name="Terms" /></GuestOnly>} />
+      <Route path="/privacy" element={<GuestOnly><Page name="Privacy" /></GuestOnly>} />
+      <Route path="/marketplace-rules" element={<GuestOnly><Page name="MarketplaceRules" /></GuestOnly>} />
       <Route path="/login" element={<GuestOnly><AuthScreen mode="login" /></GuestOnly>} />
       <Route path="/register" element={<GuestOnly><AuthScreen mode="register" /></GuestOnly>} />
       <Route path="/forgot-password" element={<GuestOnly><PasswordRecoveryScreen /></GuestOnly>} />
@@ -61,6 +66,7 @@ function App() {
       <Route path="/settings" element={<SettingsScreen />} />
       <Route path="/settings/account" element={<SettingsScreen section="account" />} />
       <Route path="/settings/security" element={<SettingsScreen section="security" />} />
+      <Route path="/settings/verification" element={<SettingsScreen section="verification" />} />
       <Route path="/settings/notifications" element={<SettingsScreen section="notifications" />} />
       <Route path="/settings/credits" element={<SettingsScreen section="credits" />} />
       <Route path="/search" element={<SearchResultsScreen />} />
@@ -70,6 +76,7 @@ function App() {
       <Route path="/projects/:id" element={<ProjectDetailScreen />} />
       <Route path="/dashboard" element={<DashboardScreen />} />
       <Route path="/work" element={<WorkManagementScreen />} />
+      <Route path="/manage/jobs/:id/proposals" element={<ProposalManagerScreen />} />
     </Route>
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes></BrowserRouter></AuthProvider></PreferencesProvider>

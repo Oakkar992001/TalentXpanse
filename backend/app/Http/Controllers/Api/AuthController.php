@@ -42,7 +42,7 @@ class AuthController extends Controller
         $user->sendEmailVerificationNotification();
 
         return response()->json([
-            'token' => $user->createToken('talentxpanse-web')->plainTextToken,
+            'token' => $user->createToken('talentxpanse-web', ['web'])->plainTextToken,
             'user' => $this->userPayload($user->fresh('roles', 'freelancerProfile', 'clientProfile')),
         ], 201);
     }
@@ -64,7 +64,7 @@ class AuthController extends Controller
         }
 
         return response()->json([
-            'token' => $user->createToken('talentxpanse-web')->plainTextToken,
+            'token' => $user->createToken('talentxpanse-web', ['web'])->plainTextToken,
             'user' => $this->userPayload($user->load('roles', 'freelancerProfile', 'clientProfile')),
         ]);
     }
@@ -124,7 +124,7 @@ class AuthController extends Controller
         abort_if($user->status === 'suspended', 403, 'This account has been suspended.');
 
         return response()->json([
-            'token' => $user->createToken('talentxpanse-google')->plainTextToken,
+            'token' => $user->createToken('talentxpanse-google', ['web'])->plainTextToken,
             'user' => $this->userPayload($user->fresh('roles', 'freelancerProfile', 'clientProfile')),
         ]);
     }
@@ -229,6 +229,7 @@ class AuthController extends Controller
 
         if (! in_array($claims['iss'] ?? null, ['accounts.google.com', 'https://accounts.google.com'], true)
             || ! in_array($audience, $audiences, true)
+            || (count($audiences) > 1 && ($claims['azp'] ?? null) !== $audience)
             || ($claims['exp'] ?? 0) < time()
             || empty($claims['sub'])
             || empty($claims['email'])

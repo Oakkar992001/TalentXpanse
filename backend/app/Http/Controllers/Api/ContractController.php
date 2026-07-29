@@ -98,18 +98,63 @@ class ContractController extends Controller
         abort_unless($contract->client_id === $request->user()->id, 403, 'Only the client can complete a contract.');
         abort_unless($contract->status === 'active', 422, 'This contract is no longer active.');
         abort_if($contract->payment_hold_status === 'on_hold', 422, 'Resolve the active payment safety hold before completing this project.');
-        abort_unless($contract->milestones()->exists() && ! $contract->milestones()->where('status', '!=', 'approved')->exists(), 422, 'Approve every milestone before completing this contract.');
+        abort_unless($this->hasApprovedEveryMilestone($contract), 422, 'Approve every milestone before completing this contract.');
 
         $contract->update(['status' => 'completed', 'completed_at' => now()]);
-        $this->event($contract, 'contract_completed', 'Contract completed. Both people can now leave a private project review.');
+        $contract->job?->update(['status' => 'completed']);
+        $event = $contract->freelancer_completion_requested_at
+            ? 'The client confirmed completion after the freelancer marked the work ready.'
+            : 'The client completed the contract after approving every milestone.';
+        $this->event($contract, 'contract_completed', "{$event} Both people can now leave a private project review.");
         $notifications->send($contract->freelancer_id, 'contract_completed', 'Project completed', "{$contract->title} is complete. You can now leave a private review.", "/projects/{$contract->id}");
 
         return ['data' => $contract->fresh('milestones')];
     }
 
+    public function requestCompletion(Request $request, Contract $contract, MarketplaceNotificationService $notifications)
+    {
+        abort_unless($contract->freelancer_id === $request->user()->id, 403, 'Only the freelancer can mark the work ready for completion.');
+        abort_unless($contract->status === 'active', 422, 'Only an active project can be marked ready for completion.');
+        abort_if($contract->payment_hold_status === 'on_hold', 422, 'Resolve the active payment safety hold before requesting completion.');
+        abort_unless($this->hasApprovedEveryMilestone($contract), 422, 'Every milestone must be approved before requesting project completion.');
+        abort_if($contract->freelancer_completion_requested_at, 422, 'You already marked this project ready for completion.');
+        $data = $request->validate(['note' => ['nullable', 'string', 'max:2000']]);
+
+        $contract->update([
+            'freelancer_completion_requested_at' => now(),
+            'freelancer_completion_note' => blank($data['note'] ?? null) ? null : $data['note'],
+        ]);
+        $this->event($contract, 'completion_requested', 'Freelancer marked all approved work ready for the client to complete the project.');
+        $notifications->send($contract->client_id, 'project_completion_requested', 'Project ready for completion', "{$request->user()->name} marked {$contract->title} ready for you to complete.", "/projects/{$contract->id}");
+
+        return ['data' => $contract->fresh('milestones')];
+    }
+
+    public function close(Request $request, Contract $contract, MarketplaceNotificationService $notifications)
+    {
+        $this->authorizeParticipant($request, $contract);
+        abort_unless($contract->status === 'active', 422, 'Only an active project can be closed.');
+        abort_if($contract->payment_hold_status === 'on_hold', 422, 'Resolve the active payment safety hold before closing this project.');
+        abort_if($contract->milestones()->whereIn('status', ['in_progress', 'submitted', 'revision_requested'])->exists(), 422, 'Use a project support request before closing a project with active or submitted delivery work.');
+        $data = $request->validate(['reason' => ['required', 'string', 'min:20', 'max:2000']]);
+
+        $contract->update([
+            'status' => 'cancelled',
+            'closed_by' => $request->user()->id,
+            'close_reason' => $data['reason'],
+            'closed_at' => now(),
+        ]);
+        $contract->job?->update(['status' => 'cancelled']);
+        $this->event($contract, 'contract_closed', 'Project closed. A project partner recorded a closing reason.');
+        $partnerId = $contract->client_id === $request->user()->id ? $contract->freelancer_id : $contract->client_id;
+        $notifications->send($partnerId, 'contract_closed', 'Project closed', "{$contract->title} was closed. Review the project activity for the recorded reason.", "/projects/{$contract->id}");
+
+        return ['data' => $contract->fresh(['milestones', 'closer'])];
+    }
+
     private function payload(Contract $contract, int $viewerId, MarketplacePaymentService $payments): array
     {
-        $contract->load(['job', 'client', 'freelancer', 'milestones.submissions.files', 'milestones.submissions.submitter', 'milestones.submissions.reviewer', 'reviews.reviewer', 'supportRequests.opener', 'supportRequests.handler']);
+        $contract->load(['job', 'client', 'freelancer', 'closer', 'milestones.submissions.files', 'milestones.submissions.submitter', 'milestones.submissions.reviewer', 'reviews.reviewer', 'supportRequests.opener', 'supportRequests.handler', 'scopeChangeRequests.requester', 'scopeChangeRequests.responder']);
         $payload = $contract->toArray();
         $payload['payment_policy'] = $payments->policy();
         $payload['payment_safety'] = $payments->safety($contract);
@@ -134,6 +179,14 @@ class ContractController extends Controller
                 'created_at' => $review->created_at,
             ];
         })->values();
+        $payload['activity'] = ConversationEvent::query()
+            ->where('contract_id', $contract->id)
+            ->latest('created_at')
+            ->latest('id')
+            ->limit(100)
+            ->get()
+            ->reverse()
+            ->values();
 
         return $payload;
     }
@@ -151,5 +204,10 @@ class ContractController extends Controller
     private function authorizeParticipant(Request $request, Contract $contract): void
     {
         abort_unless(in_array($request->user()->id, [$contract->client_id, $contract->freelancer_id], true), 403, 'You are not part of this contract.');
+    }
+
+    private function hasApprovedEveryMilestone(Contract $contract): bool
+    {
+        return $contract->milestones()->exists() && ! $contract->milestones()->where('status', '!=', 'approved')->exists();
     }
 }

@@ -13,6 +13,12 @@ export default function GlobalSearch({ open, onClose }) {
 
   useEffect(() => { if (open) setQuery('') }, [open])
   useEffect(() => {
+    if (!open) return undefined
+    const closeOnEscape = (event) => { if (event.key === 'Escape') onClose() }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [onClose, open])
+  useEffect(() => {
     if (!open || !user) return undefined
     const timer = setTimeout(async () => {
       setLoading(true)
@@ -38,9 +44,9 @@ export default function GlobalSearch({ open, onClose }) {
         <button type="button" onClick={onClose}>Close</button>
       </form>
       <p className="search-hint">Search live jobs and available freelancers.</p>
-      {loading ? <p className="search-empty">Searching…</p> : <div className="search-results">
-        {results.jobs.length > 0 && <section><h3>Jobs</h3>{results.jobs.map((job) => <button key={job.id} onClick={() => go(`/search/jobs/${job.id}`)}><span>▣</span><div><b>{job.title}</b><small>{job.client?.client_profile?.company_name || job.client?.name} · Ks {Number(job.budget_min || 0).toLocaleString()}</small></div></button>)}</section>}
-        {results.talent.length > 0 && <section><h3>Freelancers</h3>{results.talent.map((profile) => <button key={profile.id} onClick={() => go(`/search/freelancers/${profile.user_id}`)}><span>✦</span><div><b>{profile.user?.name}</b><small>{profile.title || 'Freelancer'} · {profile.location || 'Myanmar'} · {profile.user?.trust_summary?.average_rating ? `★ ${profile.user.trust_summary.average_rating}` : 'New'}</small></div></button>)}</section>}
+      {loading ? <p className="search-empty">Searching...</p> : <div className="search-results">
+        {results.jobs.length > 0 && <section><h3>Jobs</h3>{results.jobs.map((job) => <button key={job.id} onClick={() => go(`/search/jobs/${job.id}`)}><span>▣</span><div><b>{job.title}</b><small>{job.client?.client_profile?.company_name || job.client?.name} • Ks {Number(job.budget_min || 0).toLocaleString()}</small></div></button>)}</section>}
+        {results.talent.length > 0 && <section><h3>Freelancers</h3>{results.talent.map((profile) => <button key={profile.id} onClick={() => go(`/search/freelancers/${profile.user_id}`)}><span>✦</span><div><b>{profile.user?.name}</b><small>{profile.title || 'Freelancer'} • {profile.location || 'Myanmar'} • {profile.user?.trust_summary?.average_rating ? `★ ${profile.user.trust_summary.average_rating}` : 'New'}</small></div></button>)}</section>}
         {empty && <p className="search-empty">{query ? 'No matching jobs or freelancers found.' : 'Start typing to search the marketplace.'}</p>}
         {!empty && <button className="search-view-all" onClick={openResults}>View all results</button>}
       </div>}

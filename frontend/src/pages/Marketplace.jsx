@@ -300,9 +300,15 @@ export function JobDetailScreen() {
   }
 
   const decide = async (proposalId, status) => {
+    const payload = { status }
+    if (status === 'declined') {
+      const reason = window.prompt('Tell the freelancer why this proposal was not selected. Keep it brief and constructive.')
+      if (!reason?.trim()) return
+      payload.decline_reason = reason.trim()
+    }
     setActionId(proposalId); setError(''); setNotice('')
     try {
-      await api.patch(`/proposals/${proposalId}`, { status })
+      await api.patch(`/proposals/${proposalId}`, payload)
       setNotice(status === 'hired' ? 'Freelancer hired. This job is now in progress.' : `Proposal ${status}.`)
       await refreshJob(); await refreshProposals()
     } catch (requestError) { setError(errorMessage(requestError)) } finally { setActionId(null) }

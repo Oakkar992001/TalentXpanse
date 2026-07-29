@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Contract;
 use App\Models\ContractSupportRequest;
+use App\Models\ClientProfile;
 use App\Models\ConversationMessage;
 use App\Models\FreelancerProfile;
 use App\Models\Job;
@@ -29,6 +30,8 @@ class AdminController extends Controller
         return ['data' => [
             'users' => User::count(),
             'suspended_users' => User::where('status', 'suspended')->count(),
+            'pending_identity_verifications' => User::where('identity_verification_status', 'pending')->count(),
+            'pending_company_verifications' => ClientProfile::where('company_verification_status', 'pending')->count(),
             'open_jobs' => Job::where('status', 'open')->count(),
             'proposals' => Proposal::count(),
             'active_contracts' => Contract::where('status', 'active')->count(),
@@ -44,6 +47,7 @@ class AdminController extends Controller
         $this->ensureAdmin($request);
         $data = $request->validate(['search' => ['nullable', 'string', 'max:100'], 'status' => ['nullable', Rule::in(['active', 'suspended'])]]);
         $users = User::query()->with('roles')->when($data['search'] ?? null, fn ($query, $search) => $query->where(fn ($users) => $users->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%")))->when($data['status'] ?? null, fn ($query, $status) => $query->where('status', $status))->latest()->paginate(20);
+        $users->getCollection()->each(fn (User $user) => $user->makeVisible(['email', 'status']));
 
         return ['data' => $users];
     }
@@ -60,7 +64,7 @@ class AdminController extends Controller
         }
         $audit->log($request->user(), 'user.status_updated', $user, "User status changed to {$user->status}.", ['status' => $user->status]);
 
-        return ['data' => $user->fresh('roles')];
+        return ['data' => $user->fresh('roles')->makeVisible(['email', 'status'])];
     }
 
     public function jobs(Request $request)
@@ -152,7 +156,83 @@ class AdminController extends Controller
     {
         $this->ensureAdmin($request);
 
-        return ['data' => MarketplaceAdminAuditLog::query()->with('administrator')->latest('created_at')->latest('id')->paginate(30)];
+        $logs = MarketplaceAdminAuditLog::query()->with('administrator')->latest('created_at')->latest('id')->paginate(30);
+        $logs->getCollection()->each(fn (MarketplaceAdminAuditLog $log) => $log->administrator?->makeVisible(['email']));
+
+        return ['data' => $logs];
+    }
+
+    public function verifications(Request $request)
+    {
+        $this->ensureAdmin($request);
+
+        $identity = User::query()->where('identity_verification_status', 'pending')->with('roles')->latest('identity_verification_requested_at')->get();
+        $identity->each(fn (User $user) => $user->makeVisible(['email']));
+        $companies = ClientProfile::query()->where('company_verification_status', 'pending')->with('user')->latest('company_verification_requested_at')->get();
+        $companies->each(fn (ClientProfile $profile) => $profile->user?->makeVisible(['email']));
+
+        return ['data' => [
+            'identity' => $identity,
+            'companies' => $companies,
+        ]];
+    }
+
+    public function updateIdentityVerification(Request $request, User $user, MarketplaceNotificationService $notifications, MarketplaceAdminAuditService $audit)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'status' => ['required', Rule::in(['verified', 'rejected'])],
+            'note' => ['nullable', 'string', 'max:1000'],
+        ]);
+        abort_unless($user->identity_verification_status === 'pending', 422, 'This identity verification is not awaiting review.');
+        abort_if($data['status'] === 'rejected' && blank($data['note'] ?? null), 422, 'Add a clear reason when rejecting a verification request.');
+        $user->update([
+            'identity_verification_status' => $data['status'],
+            'identity_verification_note' => $data['note'] ?? null,
+            'identity_verified_at' => $data['status'] === 'verified' ? now() : null,
+            'identity_verified_by' => $request->user()->id,
+        ]);
+        $audit->log($request->user(), "identity_verification.{$data['status']}", $user, $data['note'] ?? "Identity verification {$data['status']}.", ['status' => $data['status']]);
+        $notifications->send($user, 'identity_verification_updated', 'Identity verification updated', $data['status'] === 'verified' ? 'Your identity verification is complete.' : 'Your identity verification request needs attention. Review the note in Settings.', '/settings');
+
+        return ['data' => $user->fresh('roles')->makeVisible([
+            'email',
+            'identity_verification_status',
+            'identity_verification_note',
+            'identity_verification_requested_at',
+            'identity_verified_at',
+            'identity_verified_by',
+        ])];
+    }
+
+    public function updateCompanyVerification(Request $request, ClientProfile $clientProfile, MarketplaceNotificationService $notifications, MarketplaceAdminAuditService $audit)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'status' => ['required', Rule::in(['verified', 'rejected'])],
+            'note' => ['nullable', 'string', 'max:1000'],
+        ]);
+        abort_unless($clientProfile->company_verification_status === 'pending', 422, 'This company verification is not awaiting review.');
+        abort_if($data['status'] === 'rejected' && blank($data['note'] ?? null), 422, 'Add a clear reason when rejecting a verification request.');
+        $clientProfile->update([
+            'company_verification_status' => $data['status'],
+            'company_verification_note' => $data['note'] ?? null,
+            'company_verified_at' => $data['status'] === 'verified' ? now() : null,
+            'company_verified_by' => $request->user()->id,
+        ]);
+        $audit->log($request->user(), "company_verification.{$data['status']}", $clientProfile, $data['note'] ?? "Company verification {$data['status']}.", ['status' => $data['status']]);
+        $notifications->send($clientProfile->user_id, 'company_verification_updated', 'Company verification updated', $data['status'] === 'verified' ? 'Your company verification is complete.' : 'Your company verification request needs attention. Review the note in Settings.', '/settings');
+
+        $profile = $clientProfile->fresh('user')->makeVisible([
+            'billing_verified',
+            'company_verification_note',
+            'company_verification_requested_at',
+            'company_verified_at',
+            'company_verified_by',
+        ]);
+        $profile->user?->makeVisible(['email']);
+
+        return ['data' => $profile];
     }
 
     public function updatePaymentHold(Request $request, Contract $contract, MarketplacePaymentSafetyService $paymentSafety, MarketplaceNotificationService $notifications, MarketplaceAdminAuditService $audit)

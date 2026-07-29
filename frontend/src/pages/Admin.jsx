@@ -4,6 +4,7 @@ import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import AdminPaymentSafetyPanel from '../components/AdminPaymentSafetyPanel'
 import AdminAuditTrail from '../components/AdminAuditTrail'
+import AdminVerificationPanel from '../components/AdminVerificationPanel'
 import '../admin.css'
 
 const label = (value) => String(value || '').replaceAll('_', ' ')
@@ -55,8 +56,9 @@ export function AdminDashboardScreen() {
   const [busy, setBusy] = useState(null)
   const [resolutionNotes, setResolutionNotes] = useState({})
   const [paymentData, setPaymentData] = useState(null)
+  const [verificationData, setVerificationData] = useState(null)
   const isAdmin = user?.roles?.includes('admin')
-  const endpoint = tab === 'users' ? '/admin/users' : tab === 'jobs' ? '/admin/jobs' : tab === 'support' ? '/admin/support-requests' : tab === 'payments' ? '/admin/payment-records' : tab === 'audit' ? '/admin/audit-logs' : '/admin/reports'
+  const endpoint = tab === 'users' ? '/admin/users' : tab === 'jobs' ? '/admin/jobs' : tab === 'support' ? '/admin/support-requests' : tab === 'payments' ? '/admin/payment-records' : tab === 'audit' ? '/admin/audit-logs' : tab === 'verifications' ? '/admin/verifications' : '/admin/reports'
 
   const load = async () => {
     setError('')
@@ -67,6 +69,7 @@ export function AdminDashboardScreen() {
       if (responses[1]) {
         const payload = responses[1].data.data
         if (tab === 'payments') setPaymentData(payload)
+        else if (tab === 'verifications') setVerificationData(payload)
         else setItems(payload.data || [])
       }
     } catch (requestError) {
@@ -98,7 +101,7 @@ export function AdminDashboardScreen() {
 
   return <div className="admin-shell"><aside>
     <div className="admin-brand">Talent<span>Xpanse</span><small>Operations</small></div>
-    <nav>{[['overview', 'Overview'], ['reports', 'Reports'], ['support', 'Project support'], ['payments', 'Payment safety'], ['audit', 'Audit trail'], ['jobs', 'Jobs'], ['users', 'Users']].map(([value, title]) => <button key={value} className={tab === value ? 'active' : ''} onClick={() => setTab(value)}>{title}</button>)}</nav>
+    <nav>{[['overview', 'Overview'], ['reports', 'Reports'], ['support', 'Project support'], ['verifications', 'Verifications'], ['payments', 'Payment safety'], ['audit', 'Audit trail'], ['jobs', 'Jobs'], ['users', 'Users']].map(([value, title]) => <button key={value} className={tab === value ? 'active' : ''} onClick={() => setTab(value)}>{title}</button>)}</nav>
     <div className="admin-account"><b>{user.name}</b><small>{user.email}</small><button onClick={signOut}>Log out</button></div>
   </aside><main>
     <header><div><p className="eyebrow">Administrator console</p><h1>{tab === 'overview' ? 'Marketplace overview' : label(tab)}</h1></div><span className="admin-status">Platform monitoring</span></header>
@@ -127,6 +130,8 @@ export function AdminDashboardScreen() {
       </section>}
 
       {tab === 'payments' && <AdminPaymentSafetyPanel data={paymentData} busy={busy} onAction={action} />}
+
+      {tab === 'verifications' && <AdminVerificationPanel data={verificationData} busy={busy} onAction={action} />}
 
       {tab === 'audit' && <AdminAuditTrail entries={items} />}
 

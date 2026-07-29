@@ -3,14 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Contract;
-use App\Models\Conversation;
-use App\Models\ConversationEvent;
 use App\Models\FreelancerResume;
 use App\Models\Job;
 use App\Models\PortfolioItem;
 use App\Models\Proposal;
 use App\Services\MarketplaceNotificationService;
+use App\Services\MarketplaceHiringService;
+use App\Services\MarketplacePaymentService;
 use App\Services\ProposalCreditService;
 use App\Services\TrustSummaryService;
 use Illuminate\Http\Request;
@@ -86,22 +85,27 @@ class ProposalController extends Controller
     {
         abort_unless($request->user()->hasRole('freelancer'), 403);
 
-        return ['data' => $request->user()->proposals()->with(['job.client.clientProfile', 'workSamples'])->latest()->get()];
+        return ['data' => $request->user()->proposals()->with(['job.client.clientProfile', 'workSamples', 'latestOffer'])->latest()->get()];
     }
 
     public function forJob(Request $request, Job $job, TrustSummaryService $trust)
     {
         abort_unless($job->client_id === $request->user()->id, 403, 'Only the job owner can view proposals.');
 
-        $proposals = $job->proposals()->with(['freelancer.freelancerProfile', 'workSamples'])->latest()->get();
+        $proposals = $job->proposals()->with(['freelancer.freelancerProfile', 'workSamples', 'latestOffer'])->latest()->get();
         $proposals->each(fn (Proposal $proposal) => $proposal->freelancer?->setAttribute('trust_summary', $trust->for($proposal->freelancer)));
 
         return ['data' => $proposals];
     }
 
-    public function updateStatus(Request $request, Proposal $proposal, MarketplaceNotificationService $notifications)
+    public function updateStatus(Request $request, Proposal $proposal, MarketplaceNotificationService $notifications, MarketplaceHiringService $hiring, MarketplacePaymentService $payments)
     {
-        $data = $request->validate(['status' => ['required', Rule::in(['shortlisted', 'declined', 'hired', 'withdrawn'])]]);
+        $data = $request->validate([
+            'status' => ['required', Rule::in(['shortlisted', 'interviewing', 'declined', 'hired', 'withdrawn'])],
+            'client_note' => ['nullable', 'string', 'max:2000'],
+            'decline_reason' => ['nullable', 'string', 'max:180'],
+            'interview_at' => ['nullable', 'date'],
+        ]);
 
         if ($data['status'] === 'withdrawn') {
             abort_unless($proposal->freelancer_id === $request->user()->id, 403, 'Only the freelancer can withdraw this proposal.');
@@ -115,57 +119,30 @@ class ProposalController extends Controller
         abort_unless($proposal->job->client_id === $request->user()->id, 403, 'Only the job owner can manage proposals.');
 
         if ($data['status'] === 'hired') {
-            return $this->hire($proposal, $notifications);
+            return $this->hire($proposal, $notifications, $hiring, $payments);
         }
 
         abort_if($proposal->job->status !== 'open', 422, 'This job is no longer accepting proposal decisions.');
         abort_if($proposal->status === 'hired', 422, 'A hired proposal cannot be changed.');
-        $proposal->update($data);
-        $notifications->send($proposal->freelancer_id, "proposal_{$data['status']}", "Proposal {$data['status']}", "Your proposal for {$proposal->job->title} was {$data['status']}.", "/jobs/{$proposal->job_id}");
+        abort_unless(in_array($proposal->status, ['submitted', 'shortlisted', 'interviewing'], true), 422, 'Only an active proposal can be updated.');
+        abort_if($data['status'] === 'declined' && blank($data['decline_reason'] ?? null), 422, 'Add a short reason when declining a proposal.');
+        $proposal->update([
+            'status' => $data['status'],
+            'client_note' => $data['client_note'] ?? $proposal->client_note,
+            'decline_reason' => $data['status'] === 'declined' ? $data['decline_reason'] : null,
+            'interview_at' => $data['status'] === 'interviewing' ? ($data['interview_at'] ?? $proposal->interview_at) : null,
+        ]);
+        $statusLabel = str_replace('_', ' ', $data['status']);
+        $detail = $data['status'] === 'declined' ? " Reason: {$data['decline_reason']}" : '';
+        $notifications->send($proposal->freelancer_id, "proposal_{$data['status']}", "Proposal {$statusLabel}", "Your proposal for {$proposal->job->title} is now {$statusLabel}.{$detail}", "/jobs/{$proposal->job_id}");
 
         return ['data' => $proposal->fresh('job')];
     }
 
-    private function hire(Proposal $proposal, MarketplaceNotificationService $notifications): array
+    private function hire(Proposal $proposal, MarketplaceNotificationService $notifications, MarketplaceHiringService $hiring, MarketplacePaymentService $payments): array
     {
-        return DB::transaction(function () use ($proposal, $notifications) {
-            $job = Job::query()->lockForUpdate()->findOrFail($proposal->job_id);
-            abort_unless($job->status === 'open', 422, 'This job already has a hiring decision.');
+        $hiring->startContract($proposal, $notifications, $payments);
 
-            $selected = Proposal::query()->lockForUpdate()->findOrFail($proposal->id);
-            abort_unless(in_array($selected->status, ['submitted', 'shortlisted'], true), 422, 'Only active proposals can be hired.');
-
-            $job->update(['status' => 'in_progress']);
-            $selected->update(['status' => 'hired']);
-            $job->proposals()
-                ->whereKeyNot($selected->id)
-                ->whereIn('status', ['submitted', 'shortlisted'])
-                ->update(['status' => 'declined']);
-            $conversation = Conversation::updateOrCreate(['proposal_id' => $selected->id], [
-                'job_id' => $job->id,
-                'client_id' => $job->client_id,
-                'freelancer_id' => $selected->freelancer_id,
-                'type' => 'project',
-            ]);
-            $contract = Contract::updateOrCreate(['proposal_id' => $selected->id], [
-                'job_id' => $job->id,
-                'client_id' => $job->client_id,
-                'freelancer_id' => $selected->freelancer_id,
-                'title' => $job->title,
-                'scope' => $job->description,
-                'agreed_amount' => $selected->bid_amount,
-                'status' => 'active',
-                'started_at' => now(),
-            ]);
-            ConversationEvent::firstOrCreate([
-                'conversation_id' => $conversation->id,
-                'contract_id' => $contract->id,
-                'type' => 'contract_started',
-            ], ['body' => 'Contract started. The client can now create delivery milestones.']);
-            $conversation->update(['last_message_at' => now()]);
-            $notifications->send($selected->freelancer_id, 'proposal_hired', 'You were hired', "You were hired for {$job->title}. Set up the delivery milestones with your client.", "/projects/{$contract->id}");
-
-            return ['data' => $selected->fresh('job')];
-        });
+        return ['data' => $proposal->fresh('job')];
     }
 }

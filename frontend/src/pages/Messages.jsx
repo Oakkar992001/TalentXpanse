@@ -32,6 +32,7 @@ export default function MessagesScreen() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [updatedAt, setUpdatedAt] = useState(null)
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false)
   const selectedId = params.get('conversation')
   const isClient = user?.roles?.includes('client')
   const messagesContainer = useRef(null)
@@ -75,12 +76,25 @@ export default function MessagesScreen() {
     const changedConversation = String(previousConversationId.current) !== String(conversation?.id)
     if (changedConversation) stayAtLatest.current = true
     previousConversationId.current = conversation?.id
-    if (stayAtLatest.current && messagesContainer.current) messagesContainer.current.scrollTop = messagesContainer.current.scrollHeight
+    if (stayAtLatest.current && messagesContainer.current) {
+      messagesContainer.current.scrollTop = messagesContainer.current.scrollHeight
+      setShowJumpToLatest(false)
+    }
   }, [conversation?.id, conversation?.messages?.length])
 
   const trackScroll = () => {
     const element = messagesContainer.current
-    if (element) stayAtLatest.current = element.scrollHeight - element.scrollTop - element.clientHeight < 72
+    if (!element) return
+    const atLatest = element.scrollHeight - element.scrollTop - element.clientHeight < 72
+    stayAtLatest.current = atLatest
+    setShowJumpToLatest(!atLatest)
+  }
+
+  const jumpToLatest = () => {
+    if (!messagesContainer.current) return
+    messagesContainer.current.scrollTo({ top: messagesContainer.current.scrollHeight, behavior: 'smooth' })
+    stayAtLatest.current = true
+    setShowJumpToLatest(false)
   }
 
   const startConversation = async (proposal) => {
@@ -151,6 +165,7 @@ export default function MessagesScreen() {
         {conversation ? <>
           <header className="chat-header"><ContactAvatar user={conversation.other_user} /><div><b>{conversation.other_user?.name}</b><small>{conversation.type === 'project' ? `Project chat · ${conversation.job?.title}` : `Proposal chat · ${conversation.job?.title}`}</small></div><span className="chat-sync" aria-live="polite">{updatedAt ? 'Auto-updated' : 'Loading…'}</span></header>
           <div className="chat-messages" ref={messagesContainer} onScroll={trackScroll} aria-live="polite">
+            {showJumpToLatest && <button type="button" className="jump-to-latest" onClick={jumpToLatest}>Jump to latest message</button>}
             {conversation.messages?.map((item) => item.kind === 'system'
               ? <p className="chat-system-event" key={item.id}>{item.body}<small>{new Date(item.created_at).toLocaleString()}</small></p>
               : <article className={item.sender_id === user.id ? 'sent' : ''} key={item.id}><p>{item.body}</p>{item.files?.length > 0 && <div className="message-files">{item.files.map((file) => <button type="button" key={file.id} onClick={() => downloadAttachment(file)}><AttachmentIcon /><span><b>{file.original_name}</b><small>{formatBytes(file.file_size)}</small></span></button>)}</div>}<small>{new Date(item.created_at).toLocaleString()}</small>{item.sender_id !== user.id && <MarketplaceReportButton targetType="message" targetId={item.id} />}</article>)}
