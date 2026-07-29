@@ -3,9 +3,11 @@ import { useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import MarketplaceReportButton from '../components/MarketplaceReportButton'
+import { subscribeToUserChannel } from '../services/realtime'
 
 const initials = (name) => name?.split(' ').map((part) => part[0]).slice(0, 2).join('') || 'TX'
 const acceptedFiles = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.csv,.jpg,.jpeg,.png,.webp'
+const REALTIME_FALLBACK_INTERVAL_MS = 3000
 
 function AttachmentIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m21.4 11.6-8.8 8.8a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7L9.7 17.7a2 2 0 1 1-2.8-2.8l8.5-8.5" /></svg>
@@ -39,16 +41,19 @@ export default function MessagesScreen() {
   const uploadInput = useRef(null)
   const stayAtLatest = useRef(true)
   const previousConversationId = useRef(null)
+  const loadedConversationId = useRef(null)
+  const refreshInFlight = useRef(false)
 
   const loadConversation = useCallback(async (conversationId, updateUrl = true) => {
     try {
-      if (String(conversationId) !== String(conversation?.id)) stayAtLatest.current = true
+      if (String(conversationId) !== String(loadedConversationId.current)) stayAtLatest.current = true
       const { data } = await api.get(`/conversations/${conversationId}`)
+      loadedConversationId.current = data.data.id
       setConversation(data.data)
       setUpdatedAt(new Date())
-      if (updateUrl && String(conversationId) !== String(selectedId)) setParams({ conversation: conversationId })
+      if (updateUrl) setParams((current) => current.get('conversation') === String(conversationId) ? current : { conversation: conversationId })
     } catch (requestError) { setError(errorMessage(requestError)) }
-  }, [conversation?.id, errorMessage, selectedId, setParams])
+  }, [errorMessage, setParams])
 
   const loadConversations = useCallback(async (preferredId = selectedId, updateUrl = true) => {
     try {
@@ -66,12 +71,45 @@ export default function MessagesScreen() {
   }, [isClient, user?.id])
   useEffect(() => {
     if (!user?.id) return undefined
-    const interval = window.setInterval(() => {
+    let active = true
+    let unsubscribe = null
+    let fallback = null
+    const refreshConversations = async () => {
+      if (document.hidden || refreshInFlight.current) return
+      refreshInFlight.current = true
       const activeId = selectedId || conversation?.id
-      loadConversations(activeId, false).catch(() => {})
-    }, 5000)
-    return () => window.clearInterval(interval)
-  }, [conversation?.id, loadConversations, selectedId, user?.id])
+      try {
+        if (!activeId) {
+          await loadConversations(undefined, false)
+          return
+        }
+
+        const [{ data: conversationsData }] = await Promise.all([
+          api.get('/conversations'),
+          loadConversation(activeId, false),
+        ])
+        setConversations(conversationsData.data)
+      } catch (requestError) {
+        setError(errorMessage(requestError))
+      } finally {
+        refreshInFlight.current = false
+      }
+    }
+    const refreshOnFocus = () => refreshConversations()
+    fallback = window.setInterval(refreshConversations, REALTIME_FALLBACK_INTERVAL_MS)
+    window.addEventListener('focus', refreshOnFocus)
+
+    subscribeToUserChannel(user.id, 'marketplace.message.created', refreshConversations)
+      .then((stopListening) => { if (active) unsubscribe = stopListening; else stopListening() })
+      .catch(() => {})
+
+    return () => {
+      active = false
+      unsubscribe?.()
+      if (fallback) window.clearInterval(fallback)
+      window.removeEventListener('focus', refreshOnFocus)
+    }
+  }, [conversation?.id, errorMessage, loadConversation, loadConversations, selectedId, user?.id])
   useEffect(() => {
     const changedConversation = String(previousConversationId.current) !== String(conversation?.id)
     if (changedConversation) stayAtLatest.current = true

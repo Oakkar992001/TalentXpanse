@@ -1,0 +1,321 @@
+/*
+ * Cross-page responsive audit
+ *
+ * Component styles own their visual design. This file only adjusts layout
+ * density and wrapping at the breakpoints where the workspace has less room.
+ */
+
+html, body, #root { max-width: 100%; }
+body { overflow-x: hidden; }
+
+img, svg { max-width: 100%; }
+input, select, textarea, button { max-width: 100%; }
+
+.dashboard-main,
+.dashboard-main > *,
+.workspace-dashboard,
+.workspace-dashboard > *,
+.workspace-discovery,
+.work-management-page,
+.proposal-manager-page,
+.projects-page,
+.profile-page,
+.settings-page,
+.notifications-page,
+.public-profile,
+.admin-shell main,
+.settings-layout main,
+.workspace-panel,
+.project-card,
+.work-card,
+.proposal-detail,
+.admin-payment-section,
+.admin-verification-row,
+.chat-panel { min-width: 0; }
+
+@media (max-width: 1200px) {
+  .workspace-discovery .discovery-grid,
+  .saved-search-list > div:last-child { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+
+  .workspace-discovery .search-filters { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+
+  .workspace-dashboard .workspace-metrics { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+
+  .public-portfolio > div { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+
+  .admin-metrics { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 761px) and (max-width: 1024px) {
+  .dashboard-content { padding:30px 24px 48px; }
+  .dashboard-topbar { padding:0 24px; }
+
+  .workspace-dashboard,
+  .workspace-discovery,
+  .work-management-page,
+  .settings-page,
+  .notifications-page,
+  .proposal-manager-page,
+  .projects-page,
+  .profile-page,
+  .public-profile { padding-left:24px; padding-right:24px; }
+
+  .workspace-dashboard-header,
+  .workspace-discovery > header,
+  .work-management-page > header { align-items:flex-start; }
+
+  .workspace-header-actions,
+  .work-header-actions { flex-wrap:wrap; justify-content:flex-start; }
+
+  .workspace-focus,
+  .profile-invite,
+  .additional-workspace { align-items:flex-start; }
+
+  .workspace-panel > header,
+  .workspace-dashboard .workspace-job-row,
+  .workspace-dashboard .workspace-proposal-row { padding-left:16px; padding-right:16px; }
+
+  .settings-layout { grid-template-columns:172px minmax(0, 1fr); gap:16px; }
+  .settings-card { padding:20px; }
+
+  .project-completion-panel,
+  .support-panel { grid-template-columns:minmax(0, 1fr) minmax(220px, .65fr); }
+}
+
+@media (max-width: 900px) {
+  .workspace-dashboard .workspace-dashboard-grid.client,
+  .workspace-dashboard .workspace-dashboard-grid.freelancer,
+  .workspace-dashboard .workspace-panel-grid,
+  .public-profile-grid { grid-template-columns:1fr; }
+
+  .workspace-dashboard .workspace-metrics { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+
+  .profile-invite,
+  .additional-workspace { flex-direction:column; }
+
+  .profile-invite .button,
+  .additional-workspace .button { align-self:flex-start; }
+
+  .admin-payment-section > article { grid-template-columns:minmax(0, 1fr) 220px; }
+}
+
+@media (max-width: 760px) {
+  .site-header { gap:10px; }
+  .header-actions { min-width:0; }
+
+  .dashboard-topbar { min-height:60px; padding:0 14px; }
+  .dashboard-topbar > div:first-child { min-width:0; }
+  .dashboard-topbar h2 { overflow:hidden; max-width:calc(100vw - 272px); text-overflow:ellipsis; white-space:nowrap; }
+
+  .workspace-dashboard,
+  .workspace-discovery,
+  .work-management-page,
+  .settings-page,
+  .notifications-page,
+  .proposal-manager-page,
+  .projects-page,
+  .profile-page,
+  .public-profile { padding-left:16px; padding-right:16px; }
+
+  .workspace-dashboard-header,
+  .workspace-discovery > header,
+  .work-management-page > header,
+  .notifications-page header,
+  .dashboard-header,
+  .dashboard-header-actions,
+  .result-heading { align-items:flex-start; flex-direction:column; }
+
+  .workspace-header-actions,
+  .work-header-actions,
+  .dashboard-header-actions { width:100%; justify-content:flex-start; }
+
+  .workspace-header-actions .button,
+  .work-header-actions .button,
+  .dashboard-header-actions .button { flex:1 1 150px; }
+
+  .workspace-focus,
+  .profile-invite,
+  .additional-workspace,
+  .payment-hold-notice,
+  .scope-change-list article,
+  .project-options-content { align-items:flex-start; flex-direction:column; }
+
+  .workspace-focus .button,
+  .profile-invite .button,
+  .additional-workspace .button { width:100%; }
+
+  .workspace-dashboard .workspace-metrics,
+  .workspace-discovery .discovery-grid,
+  .workspace-discovery .search-filters,
+  .saved-search-list > div:last-child,
+  .public-portfolio > div,
+  .admin-metrics { grid-template-columns:1fr; }
+
+  .workspace-discovery .search-tabs { margin-right:-16px; padding-right:16px; }
+  .workspace-discovery .search-tabs button { flex:0 0 auto; }
+
+  .work-card footer,
+  .invite-list article,
+  .invite-list footer,
+  .work-offer-heading { align-items:stretch; flex-direction:column; }
+
+  .work-card footer > div,
+  .invite-list footer > div { width:100%; }
+
+  .work-card footer .button,
+  .work-card footer button,
+  .invite-list footer .button,
+  .invite-list footer button { flex:1 1 130px; justify-content:center; }
+
+  .work-offer li { align-items:flex-start; flex-direction:column; }
+
+  .marketplace-detail-actions,
+  .marketplace-detail-actions > div,
+  .scope-change-panel,
+  .project-options-content { display:flex; }
+
+  .marketplace-detail-actions { align-items:stretch; flex-direction:column; }
+  .marketplace-detail-actions > div { flex-wrap:wrap; }
+  .marketplace-report-control form { right:auto; left:0; width:min(260px, calc(100vw - 48px)); }
+
+  .settings-card { padding:18px; }
+  .settings-card-heading { gap:12px; }
+
+  .account-facts { grid-template-columns:1fr; }
+  .workspace-cards article { grid-template-columns:38px minmax(0, 1fr); }
+  .workspace-cards article > :last-child { grid-column:2; justify-self:start; }
+
+  .notification-item { grid-template-columns:34px minmax(0, 1fr) 10px; padding:14px; }
+  .notification-item p { overflow-wrap:anywhere; }
+
+  .project-completion-panel,
+  .payment-overview,
+  .support-panel,
+  .scope-change-panel,
+  .project-options-content,
+  .admin-payment-safety > header,
+  .admin-payment-section > article,
+  .admin-verification-row { grid-template-columns:1fr; }
+
+  .completion-progress { flex-wrap:wrap; }
+  .completion-progress i { flex:1 1 110px; }
+  .completion-action { width:100%; justify-items:start; }
+  .completion-action .button,
+  .completion-confirmation,
+  .completion-form { width:100%; }
+
+  .admin-shell main { padding:22px 14px 74px; }
+  .admin-shell nav { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+  .admin-shell nav button { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .admin-table { margin-right:-2px; }
+  .admin-table table { min-width:610px; }
+}
+
+@media (max-width: 480px) {
+  body { font-size:15px; }
+
+  .site-header { padding:0 12px; }
+  .site-header .language-toggle { display:none; }
+  .site-header .brand { font-size:19px; }
+  .header-actions { gap:6px; }
+  .header-actions .button-small { min-height:35px; padding:0 11px; font-size:12px; }
+
+  .dashboard-topbar { padding:0 11px; }
+  .dashboard-topbar h2 { max-width:calc(100vw - 218px); font-size:13px; }
+  .topbar-actions { gap:5px; }
+  .mobile-preferences { gap:4px; }
+  .mobile-preferences .language-toggle { min-width:46px; padding:3px 5px !important; }
+
+  .workspace-dashboard,
+  .workspace-discovery,
+  .work-management-page,
+  .settings-page,
+  .notifications-page,
+  .proposal-manager-page,
+  .projects-page,
+  .profile-page,
+  .public-profile { padding-left:12px; padding-right:12px; }
+
+  .workspace-dashboard h1,
+  .workspace-discovery h1,
+  .work-management-page h1,
+  .settings-page h1,
+  .notifications-page h1 { font-size:27px; }
+
+  .workspace-header-actions,
+  .work-header-actions,
+  .dashboard-header-actions { display:grid; grid-template-columns:1fr; }
+  .workspace-header-actions .button,
+  .work-header-actions .button,
+  .dashboard-header-actions .button { width:100%; }
+
+  .workspace-focus,
+  .settings-card,
+  .work-card,
+  .invite-list,
+  .proposal-detail,
+  .payment-overview,
+  .project-completion-panel,
+  .support-panel,
+  .scope-change-panel,
+  .contract-activity,
+  .closed-project-record { padding:14px; }
+
+  .discovery-search { gap:8px; }
+  .discovery-search input { min-height:44px; }
+  .search-pager { flex-wrap:wrap; gap:8px; }
+  .search-pager button { flex:1 1 110px; }
+
+  .work-card footer .button,
+  .work-card footer button,
+  .invite-list footer .button,
+  .invite-list footer button { width:100%; flex-basis:100%; }
+
+  .work-credits { width:100%; white-space:normal; }
+  .work-meta { min-width:0; }
+
+  .settings-mobile-toggle { min-height:43px; }
+  .settings-sidebar nav { top:48px; }
+  .settings-card-heading { align-items:flex-start; flex-direction:column; }
+  .status-pill { align-self:flex-start; }
+
+  .proposal-list > button { flex-basis:185px; }
+  .proposal-detail-header h1 { font-size:22px; }
+  .proposal-actions-panel .button,
+  .proposal-offer-form footer .button { width:100%; }
+
+  .notification-item { padding:13px 11px; gap:9px; }
+  .notification-item b { font-size:12px; }
+
+  .payment-overview dl div { padding:10px; }
+  .completion-confirmation > div,
+  .completion-form > div,
+  .scope-change-list footer,
+  .project-options form > div { display:grid; grid-template-columns:1fr; width:100%; }
+  .completion-confirmation .button,
+  .completion-form .button,
+  .scope-change-list footer button,
+  .project-options form .button { width:100%; }
+
+  .admin-login { padding:14px; }
+  .admin-login section { padding:24px 18px; }
+  .admin-shell aside { padding:10px 8px; }
+  .admin-shell nav { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .admin-shell nav button { min-height:38px; font-size:10px; }
+  .admin-metrics { grid-template-columns:1fr; }
+  .admin-table { padding:8px; }
+  .admin-table table { min-width:570px; }
+
+  .messages-page { padding-left:0; padding-right:0; }
+  .conversation-list { max-height:230px; }
+  .chat-panel { min-height:470px; }
+  .chat-header { gap:8px; }
+  .chat-messages { padding:12px; }
+  .chat-messages article { max-width:92%; }
+}
+
+.notification-live-status { display:inline-flex; align-items:center; gap:6px; margin-top:10px; color:var(--positive); font-size:11px; font-weight:700; }
+.notification-live-status i { width:7px; height:7px; border-radius:50%; background:currentColor; box-shadow:0 0 0 4px color-mix(in srgb, currentColor 15%, transparent); }
+
+.discovery-grid .discovery-result-card { cursor:pointer; }
+.discovery-grid .discovery-result-card:focus-visible { outline:3px solid color-mix(in srgb, var(--brand) 42%, transparent); outline-offset:2px; }

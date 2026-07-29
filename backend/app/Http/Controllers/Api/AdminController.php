@@ -16,6 +16,8 @@ use App\Models\Proposal;
 use App\Models\User;
 use App\Services\MarketplaceNotificationService;
 use App\Services\MarketplacePaymentSafetyService;
+use App\Services\MarketplaceEscrowService;
+use App\Services\MarketplacePaymentService;
 use App\Services\MarketplaceAdminAuditService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -143,7 +145,8 @@ class AdminController extends Controller
 
         return ['data' => [
             'payments_enabled' => config('marketplace_payments.enabled'),
-            'records' => MarketplacePaymentRecord::query()->with(['contract', 'milestone', 'client', 'freelancer'])->latest()->paginate(20),
+            'gateway_configured' => app(MarketplacePaymentService::class)->gatewayConfigured(),
+            'records' => MarketplacePaymentRecord::query()->with(['contract', 'milestone', 'client', 'freelancer', 'ledgerEntries'])->latest()->paginate(20),
             'on_hold_contracts' => Contract::query()
                 ->where('payment_hold_status', 'on_hold')
                 ->with(['client.clientProfile', 'freelancer', 'paymentHoldHandler'])
@@ -235,7 +238,7 @@ class AdminController extends Controller
         return ['data' => $profile];
     }
 
-    public function updatePaymentHold(Request $request, Contract $contract, MarketplacePaymentSafetyService $paymentSafety, MarketplaceNotificationService $notifications, MarketplaceAdminAuditService $audit)
+    public function updatePaymentHold(Request $request, Contract $contract, MarketplacePaymentSafetyService $paymentSafety, MarketplaceEscrowService $escrow, MarketplaceNotificationService $notifications, MarketplaceAdminAuditService $audit)
     {
         $this->ensureAdmin($request);
         $data = $request->validate([
@@ -246,6 +249,9 @@ class AdminController extends Controller
         $updated = $data['status'] === 'on_hold'
             ? $paymentSafety->placeHold($contract, $request->user(), $data['note'])
             : $paymentSafety->clearHold($contract, $request->user(), $data['note']);
+        if ($updated->payment_hold_status === 'clear') {
+            $escrow->resumeDisputedFunds($updated, $request->user(), $data['note']);
+        }
         $title = $updated->payment_hold_status === 'on_hold' ? 'Payment safety hold active' : 'Payment safety hold cleared';
         $message = $updated->payment_hold_status === 'on_hold'
             ? "TalentXpanse placed a payment safety hold on {$updated->title}."

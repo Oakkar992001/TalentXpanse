@@ -70,7 +70,7 @@ export function ProjectDetailScreen() {
     event.preventDefault()
     run(() => api.post(`/contracts/${id}/milestones`, { ...form, amount: Number(form.amount), due_date: form.due_date || null }), 'Milestone created.').then(() => setForm({ title: '', description: '', amount: '', due_date: '' }))
   }
-  const milestoneAction = (milestoneId, action) => run(() => api.patch(`/milestones/${milestoneId}`, { action }), action === 'approve' ? 'Milestone approved.' : `Milestone ${readableStatus(action)}.`)
+  const milestoneAction = (milestoneId, action) => run(() => api.patch(`/milestones/${milestoneId}`, { action }), action === 'approve' ? 'Milestone approved.' : action === 'start' ? 'Milestone started.' : `Milestone ${readableStatus(action)}.`)
   const complete = async () => {
     const completed = await run(() => api.post(`/contracts/${id}/complete`), 'Project completed. You can now leave a review.')
     if (completed) setCompletionConfirmOpen(false)

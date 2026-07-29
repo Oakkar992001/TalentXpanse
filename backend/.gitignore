@@ -18,6 +18,8 @@
 /public/storage
 /storage/*.key
 /storage/pail
+/database/talentxpanse-e2e.sqlite
+/bootstrap/cache/e2e-config.php
 /vendor
 Homestead.json
 Homestead.yaml

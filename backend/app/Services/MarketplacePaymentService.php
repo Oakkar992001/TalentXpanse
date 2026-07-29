@@ -16,6 +16,7 @@ class MarketplacePaymentService
             'platform_fee_basis_points' => $feeBasisPoints,
             'platform_fee_percent' => $feeBasisPoints / 100,
             'payments_enabled' => config('marketplace_payments.enabled'),
+            'gateway_configured' => $this->gatewayConfigured(),
         ];
     }
 
@@ -49,6 +50,21 @@ class MarketplacePaymentService
         ];
     }
 
+    public function gatewayConfigured(): bool
+    {
+        return config('marketplace_payments.enabled') && filled(config('marketplace_payments.provider'));
+    }
+
+    public function canComplete(Contract $contract): bool
+    {
+        if (! $this->gatewayConfigured()) {
+            return true;
+        }
+
+        return $contract->milestones()->exists()
+            && ! $contract->milestones()->where('funding_status', '!=', 'released')->exists();
+    }
+
     public function safety(Contract $contract): array
     {
         $isOnHold = $contract->payment_hold_status === 'on_hold';
@@ -58,10 +74,11 @@ class MarketplacePaymentService
             'payment_hold_status' => $contract->payment_hold_status,
             'payment_hold_note' => $contract->payment_hold_note,
             'payment_hold_at' => $contract->payment_hold_at,
-            'release_allowed' => config('marketplace_payments.enabled') && ! $isOnHold,
+            'gateway_configured' => $this->gatewayConfigured(),
+            'release_allowed' => $this->gatewayConfigured() && ! $isOnHold,
             'status_message' => $isOnHold
                 ? 'Payment safety hold is active. No release can happen until TalentXpanse resolves it.'
-                : (config('marketplace_payments.enabled') ? 'Payment processing will be available when a provider is configured.' : 'Payment setup is not available yet.'),
+                : ($this->gatewayConfigured() ? 'Escrow releases are processed only after a milestone is approved.' : 'Payment provider setup is not available yet. No money is held by TalentXpanse.'),
         ];
     }
 }

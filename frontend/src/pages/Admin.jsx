@@ -1,13 +1,27 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import { useConfirmation } from '../contexts/ConfirmContext'
 import AdminPaymentSafetyPanel from '../components/AdminPaymentSafetyPanel'
 import AdminAuditTrail from '../components/AdminAuditTrail'
 import AdminVerificationPanel from '../components/AdminVerificationPanel'
 import '../admin.css'
 
 const label = (value) => String(value || '').replaceAll('_', ' ')
+
+function confirmationForAction(path, payload) {
+  const status = payload?.status
+  if (path.startsWith('/admin/users/') && status === 'suspended') return { title: 'Suspend this account?', message: 'The user will be signed out and unable to access TalentXpanse until an administrator restores the account.', confirmLabel: 'Suspend account', tone: 'danger' }
+  if (path.startsWith('/admin/jobs/') && status === 'closed') return { title: 'Close this job post?', message: 'It will no longer be available for new proposals. This action is recorded in the audit trail.', confirmLabel: 'Close job', tone: 'danger' }
+  if (path.startsWith('/admin/jobs/') && status === 'paused') return { title: 'Pause this job post?', message: 'New proposals will be blocked until the job is reopened or closed.', confirmLabel: 'Pause job' }
+  if (path.startsWith('/admin/reports/') && ['resolved', 'dismissed'].includes(status)) return { title: `${status === 'resolved' ? 'Resolve' : 'Dismiss'} this report?`, message: 'Make sure you reviewed the reported content. The decision is recorded in the audit trail.', confirmLabel: status === 'resolved' ? 'Resolve report' : 'Dismiss report' }
+  if (path.startsWith('/admin/support-requests/') && ['resolved', 'dismissed'].includes(status)) return { title: `${status === 'resolved' ? 'Resolve' : 'Dismiss'} this support request?`, message: 'The submitted closing note will be shown to the project partners and the decision will be audited.', confirmLabel: status === 'resolved' ? 'Resolve request' : 'Dismiss request' }
+  if (path.includes('identity-verification') || path.includes('company-verification')) return { title: `${status === 'verified' ? 'Approve' : 'Reject'} this verification?`, message: 'Verification is an account-trust signal only. Confirm the evidence before recording this decision.', confirmLabel: status === 'verified' ? 'Approve verification' : 'Reject verification', tone: status === 'rejected' ? 'danger' : undefined }
+  if (path.endsWith('/payment-hold') && status === 'clear') return { title: 'Clear this payment hold?', message: 'Confirm the review outcome and note are accurate before allowing this project to continue.', confirmLabel: 'Clear hold', tone: 'danger' }
+
+  return null
+}
 
 export function AdminLoginScreen() {
   const { adminLogin, errorMessage, user } = useAuth()
@@ -48,6 +62,7 @@ export function AdminLoginScreen() {
 
 export function AdminDashboardScreen() {
   const { user, loading, logout, errorMessage } = useAuth()
+  const confirm = useConfirmation()
   const navigate = useNavigate()
   const [tab, setTab] = useState('overview')
   const [dashboard, setDashboard] = useState(null)
@@ -57,10 +72,11 @@ export function AdminDashboardScreen() {
   const [resolutionNotes, setResolutionNotes] = useState({})
   const [paymentData, setPaymentData] = useState(null)
   const [verificationData, setVerificationData] = useState(null)
+  const [lastRefreshed, setLastRefreshed] = useState(null)
   const isAdmin = user?.roles?.includes('admin')
   const endpoint = tab === 'users' ? '/admin/users' : tab === 'jobs' ? '/admin/jobs' : tab === 'support' ? '/admin/support-requests' : tab === 'payments' ? '/admin/payment-records' : tab === 'audit' ? '/admin/audit-logs' : tab === 'verifications' ? '/admin/verifications' : '/admin/reports'
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError('')
     try {
       const requests = tab === 'overview' ? [api.get('/admin/dashboard')] : [api.get('/admin/dashboard'), api.get(endpoint)]
@@ -72,17 +88,20 @@ export function AdminDashboardScreen() {
         else if (tab === 'verifications') setVerificationData(payload)
         else setItems(payload.data || [])
       }
+      setLastRefreshed(new Date())
     } catch (requestError) {
       setError(errorMessage(requestError))
     }
-  }
+  }, [endpoint, errorMessage, tab])
 
-  useEffect(() => { if (isAdmin) load() }, [tab, isAdmin])
+  useEffect(() => { if (isAdmin) load() }, [isAdmin, load])
 
   if (loading) return <main className="admin-login"><p>Loading administrator access…</p></main>
   if (!isAdmin) return <Navigate to="/admin/login" replace />
 
   const action = async (path, payload) => {
+    const confirmation = confirmationForAction(path, payload)
+    if (confirmation && !await confirm(confirmation)) return
     setBusy(path)
     try {
       await api.patch(path, payload)
@@ -104,7 +123,7 @@ export function AdminDashboardScreen() {
     <nav>{[['overview', 'Overview'], ['reports', 'Reports'], ['support', 'Project support'], ['verifications', 'Verifications'], ['payments', 'Payment safety'], ['audit', 'Audit trail'], ['jobs', 'Jobs'], ['users', 'Users']].map(([value, title]) => <button key={value} className={tab === value ? 'active' : ''} onClick={() => setTab(value)}>{title}</button>)}</nav>
     <div className="admin-account"><b>{user.name}</b><small>{user.email}</small><button onClick={signOut}>Log out</button></div>
   </aside><main>
-    <header><div><p className="eyebrow">Administrator console</p><h1>{tab === 'overview' ? 'Marketplace overview' : label(tab)}</h1></div><span className="admin-status">Platform monitoring</span></header>
+    <header><div><p className="eyebrow">Administrator console</p><h1>{tab === 'overview' ? 'Marketplace overview' : label(tab)}</h1></div><div className="admin-header-actions"><small>{lastRefreshed ? `Updated ${lastRefreshed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Loading current data'}</small><button className="button button-outline" onClick={load} disabled={busy}>Refresh</button><span className="admin-status">Platform monitoring</span></div></header>
     {error && <p className="form-notice">{error}</p>}
     {!dashboard ? <p className="admin-loading">Loading operational data…</p> : <>
       {tab === 'overview' && <section className="admin-metrics">{[['Users', dashboard.users], ['Open jobs', dashboard.open_jobs], ['Proposals', dashboard.proposals], ['Active contracts', dashboard.active_contracts], ['Content reports', dashboard.open_reports], ['Project support', dashboard.open_support_requests], ['Payment holds', dashboard.payment_holds], ['Audit entries', dashboard.audit_entries], ['Suspended users', dashboard.suspended_users]].map(([name, value]) => <article key={name}><small>{name}</small><b>{value}</b></article>)}</section>}

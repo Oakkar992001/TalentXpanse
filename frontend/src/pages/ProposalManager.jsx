@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import { useConfirmation } from '../contexts/ConfirmContext'
 import '../proposal-manager.css'
 
 const money = (amount) => `Ks ${Number(amount || 0).toLocaleString()}`
@@ -31,6 +32,7 @@ function OfferExpiryNotice({ offer }) {
 export default function ProposalManagerScreen() {
   const { id } = useParams()
   const { user, errorMessage } = useAuth()
+  const confirm = useConfirmation()
   const [job, setJob] = useState(null)
   const [proposals, setProposals] = useState([])
   const [tab, setTab] = useState('all')
@@ -98,8 +100,8 @@ export default function ProposalManagerScreen() {
     if (!declineReason.trim()) return
     run('decline', () => api.patch(`/proposals/${selected.id}`, { status: 'declined', decline_reason: declineReason.trim() }), 'Proposal declined. The freelancer received your decision note.')
   }
-  const withdrawOffer = () => {
-    if (!window.confirm('Withdraw this formal offer? The freelancer will be notified and you can send revised terms later.')) return
+  const withdrawOffer = async () => {
+    if (!await confirm({ title: 'Withdraw this formal offer?', message: 'The freelancer will be notified. You can send revised terms later if needed.', confirmLabel: 'Withdraw offer' })) return
     run('withdraw-offer', () => api.patch(`/proposal-offers/${selected.latest_offer.id}`, { status: 'withdrawn' }), 'Offer withdrawn. You can send revised terms when ready.')
   }
   const updateMilestone = (index, updates) => setOffer((current) => ({ ...current, milestones: current.milestones.map((item, itemIndex) => itemIndex === index ? { ...item, ...updates } : item) }))

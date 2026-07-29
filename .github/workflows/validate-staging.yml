@@ -1,0 +1,47 @@
+name: Validate staging
+
+on:
+  workflow_dispatch:
+
+jobs:
+  marketplace-journey:
+    name: Browser journey
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      TALENTXPANSE_STAGING_URL: ${{ vars.STAGING_APP_URL }}
+      TALENTXPANSE_STAGING_API_URL: ${{ vars.STAGING_API_URL }}
+      TALENTXPANSE_STAGING_E2E_CONFIRM: 'YES'
+
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Validate the staging journey
+        working-directory: frontend
+        run: npm run test:e2e:staging
+
+      - name: Upload Playwright artifacts
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-playwright-artifacts
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          if-no-files-found: ignore

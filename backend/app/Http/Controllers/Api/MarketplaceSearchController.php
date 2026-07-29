@@ -27,6 +27,7 @@ class MarketplaceSearchController extends Controller
             'min_rate' => ['nullable', 'numeric', 'min:0'],
             'max_rate' => ['nullable', 'numeric', 'min:0', 'gte:min_rate'],
             'availability' => ['nullable', Rule::in(['all', 'available'])],
+            'sort' => ['nullable', Rule::in(['newest', 'budget_high', 'budget_low', 'rate_high', 'rate_low'])],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:6', 'max:24'],
         ]);
@@ -48,8 +49,13 @@ class MarketplaceSearchController extends Controller
                 ->when($data['experience_level'] ?? null, fn ($query, $experience) => $query->where('experience_level', $experience))
                 ->when($data['min_budget'] ?? null, fn ($query, $minimum) => $query->where('budget_max', '>=', $minimum))
                 ->when($data['max_budget'] ?? null, fn ($query, $maximum) => $query->where('budget_min', '<=', $maximum))
-                ->with('client.clientProfile')
-                ->latest();
+                ->with('client.clientProfile');
+
+            match ($data['sort'] ?? 'newest') {
+                'budget_high' => $jobsQuery->orderByDesc('budget_max'),
+                'budget_low' => $jobsQuery->orderBy('budget_min'),
+                default => $jobsQuery->latest(),
+            };
 
             if ($scope === 'jobs') {
                 $page = $jobsQuery->paginate($perPage)->withQueryString();
@@ -68,8 +74,13 @@ class MarketplaceSearchController extends Controller
                 ->when($data['min_rate'] ?? null, fn ($query, $minimum) => $query->where('hourly_rate', '>=', $minimum))
                 ->when($data['max_rate'] ?? null, fn ($query, $maximum) => $query->where('hourly_rate', '<=', $maximum))
                 ->when(($data['availability'] ?? null) === 'available', fn ($query) => $query->where('availability', true))
-                ->with('user')
-                ->latest();
+                ->with('user');
+
+            match ($data['sort'] ?? 'newest') {
+                'rate_high' => $talentQuery->orderByDesc('hourly_rate'),
+                'rate_low' => $talentQuery->orderBy('hourly_rate'),
+                default => $talentQuery->latest(),
+            };
 
             if ($scope === 'talent') {
                 $page = $talentQuery->paginate($perPage)->withQueryString();

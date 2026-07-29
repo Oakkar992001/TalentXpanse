@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import { useConfirmation } from '../contexts/ConfirmContext'
 import ProfileReadinessCard from '../components/ProfileReadinessCard'
 import TrustSummary from '../components/TrustSummary'
 import '../trust.css'
 
 export default function ProfileScreen() {
-  const { user, addRole, errorMessage, refreshUser } = useAuth()
+  const { user, errorMessage, refreshUser } = useAuth()
+  const confirm = useConfirmation()
   const [profile, setProfile] = useState(null)
   const [form, setForm] = useState({ title: '', bio: '', hourly_rate: '', location: '', skills: '', availability: true })
   const [portfolioForm, setPortfolioForm] = useState({ title: '', description: '', project_url: '' })
@@ -15,7 +17,7 @@ export default function ProfileScreen() {
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const { data } = await api.get('/freelancer-profile')
       setProfile(data.data)
@@ -31,16 +33,18 @@ export default function ProfileScreen() {
     } catch (requestError) {
       setError(errorMessage(requestError))
     }
-  }
+  }, [errorMessage])
+
+  const hasFreelancerRole = user?.roles?.includes('freelancer')
 
   useEffect(() => {
-    if (user?.roles?.includes('freelancer')) load()
-  }, [user?.id])
+    if (hasFreelancerRole) load()
+  }, [hasFreelancerRole, load, user?.id])
 
   if (!user) return <section className="simple-page"><h1>Build your freelancer profile.</h1><p>Sign in to show clients your skills and work samples.</p><Link className="button button-primary" to="/login">Log in</Link></section>
 
-  if (!user.roles.includes('freelancer')) {
-    return <section className="simple-page"><p className="eyebrow">Freelancer profile</p><h1>Ready to show your work?</h1><p>Add the freelancer role to create a profile, portfolio, and optional CV.</p><button className="button button-primary" onClick={async () => { await addRole('freelancer'); load() }}>Add freelancer role</button></section>
+  if (!hasFreelancerRole) {
+    return <section className="simple-page"><p className="eyebrow">Freelancer profile</p><h1>Ready to show your work?</h1><p>Add a Freelancer workspace from Settings. You will keep the same sign-in and be guided through the profile setup.</p><Link className="button button-primary" to="/settings/account">Add Freelancer workspace</Link></section>
   }
 
   const saveProfile = async (event) => {
@@ -78,7 +82,7 @@ export default function ProfileScreen() {
   }
 
   const removePortfolioItem = async (itemId) => {
-    if (!window.confirm('Remove this work sample from your profile?')) return
+    if (!await confirm({ title: 'Remove this work sample?', message: 'Clients will no longer see this sample, and it cannot be restored after removal.', confirmLabel: 'Remove sample' })) return
     try {
       await api.delete(`/portfolio-items/${itemId}`)
       await load()

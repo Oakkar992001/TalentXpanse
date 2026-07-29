@@ -2,26 +2,35 @@
 
 namespace Tests\Feature;
 
+use App\Events\MarketplaceMessageCreated;
+use App\Events\MarketplaceNotificationCreated;
 use App\Models\Contract;
+use App\Models\ContractSupportRequest;
 use App\Models\Conversation;
 use App\Models\FreelancerResume;
 use App\Models\Job;
+use App\Models\MarketplaceNotification;
 use App\Models\PortfolioItem;
 use App\Models\Proposal;
 use App\Models\ProposalOffer;
 use App\Models\Role;
 use App\Models\User;
 use App\Notifications\TalentXpanseResetPassword;
+use App\Notifications\TalentXpanseVerifyEmail;
+use App\Services\MarketplaceEscrowService;
 use App\Services\MarketplaceNotificationService;
+use Illuminate\Broadcasting\BroadcastManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Notification;
-use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password as PasswordBroker;
-use Illuminate\Auth\Notifications\VerifyEmail;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Laravel\Sanctum\Sanctum;
+use LogicException;
 use Tests\TestCase;
 
 class MarketplaceApiTest extends TestCase
@@ -36,6 +45,8 @@ class MarketplaceApiTest extends TestCase
             'password' => 'secure-password',
             'password_confirmation' => 'secure-password',
             'role' => 'client',
+            'terms_accepted' => true,
+            'privacy_accepted' => true,
         ])->assertCreated()->assertJsonPath('user.roles.0', 'client')->assertJsonPath('user.active_role', 'client');
 
         $this->withToken($registration->json('token'))
@@ -56,13 +67,269 @@ class MarketplaceApiTest extends TestCase
         $this->assertDatabaseHas('marketplace_jobs', ['title' => 'Laravel developer for a local commerce app']);
     }
 
+    public function test_registration_requires_and_records_policy_acceptance(): void
+    {
+        $payload = [
+            'name' => 'Policy Test User',
+            'email' => 'policy-test@example.test',
+            'password' => 'secure-password',
+            'password_confirmation' => 'secure-password',
+            'role' => 'freelancer',
+        ];
+
+        $this->postJson('/api/auth/register', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['terms_accepted', 'privacy_accepted']);
+
+        $this->postJson('/api/auth/register', [...$payload, 'terms_accepted' => true, 'privacy_accepted' => true])
+            ->assertCreated();
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'policy-test@example.test',
+            'terms_version' => '2026-07-30',
+        ]);
+    }
+
+    public function test_readiness_health_check_reports_application_and_database_status_without_authentication(): void
+    {
+        $this->getJson('/api/health')
+            ->assertOk()
+            ->assertJsonPath('status', 'ok')
+            ->assertJsonPath('application', config('app.name'))
+            ->assertJsonPath('database', 'ok')
+            ->assertJsonPath('cache', 'ok')
+            ->assertJsonPath('queue', 'ok')
+            ->assertJsonPath('storage', 'ok');
+    }
+
+    public function test_operations_check_reports_the_current_runtime_as_ready(): void
+    {
+        $this->assertSame(0, Artisan::call('marketplace:operations-check'));
+    }
+
+    public function test_client_and_freelancer_can_complete_the_core_marketplace_journey(): void
+    {
+        Notification::fake();
+
+        $clientRegistration = $this->postJson('/api/auth/register', [
+            'name' => 'May Thiri',
+            'email' => 'may.thiri@example.test',
+            'password' => 'secure-password',
+            'password_confirmation' => 'secure-password',
+            'role' => 'client',
+            'terms_accepted' => true,
+            'privacy_accepted' => true,
+        ])->assertCreated();
+        $client = $clientRegistration->json('user');
+        $clientToken = $clientRegistration->json('token');
+
+        $freelancerRegistration = $this->postJson('/api/auth/register', [
+            'name' => 'Ko Min',
+            'email' => 'ko.min@example.test',
+            'password' => 'secure-password',
+            'password_confirmation' => 'secure-password',
+            'role' => 'freelancer',
+            'terms_accepted' => true,
+            'privacy_accepted' => true,
+        ])->assertCreated();
+        $freelancer = $freelancerRegistration->json('user');
+        $freelancerToken = $freelancerRegistration->json('token');
+        $asClient = function () use ($clientToken) {
+            app('auth')->forgetGuards();
+
+            return $this->flushHeaders()->withToken($clientToken);
+        };
+        $asFreelancer = function () use ($freelancerToken) {
+            app('auth')->forgetGuards();
+
+            return $this->flushHeaders()->withToken($freelancerToken);
+        };
+
+        $asClient()->getJson('/api/auth/user')->assertOk()->assertJsonPath('user.id', $client['id']);
+        $asFreelancer()->getJson('/api/auth/user')->assertOk()->assertJsonPath('user.id', $freelancer['id']);
+
+        $job = $asClient()->postJson('/api/jobs', [
+            'title' => 'Build a bilingual membership dashboard',
+            'description' => 'Build a responsive English and Myanmar membership dashboard with clear navigation, account states, and maintainable Laravel integration.',
+            'category' => 'Development & IT',
+            'skills' => ['Laravel', 'React', 'MySQL'],
+            'budget_min' => 450000,
+            'budget_max' => 600000,
+            'budget_type' => 'fixed',
+            'duration' => '2 to 4 weeks',
+            'experience_level' => 'intermediate',
+        ])->assertCreated()->json('data');
+
+        $asFreelancer()->getJson('/api/search?scope=jobs&q=bilingual')
+            ->assertOk()
+            ->assertJsonPath('data.jobs.0.id', $job['id']);
+
+        $proposal = $asFreelancer()->postJson("/api/jobs/{$job['id']}/proposals", [
+            'cover_letter' => 'I build responsive Laravel and React dashboards with bilingual interface considerations, clear handover notes, and practical quality checks for every milestone.',
+            'bid_amount' => 550000,
+            'delivery_days' => 21,
+        ])->assertCreated()
+            ->assertJsonPath('proposal_credits.balance', 16)
+            ->json('data');
+
+        $conversation = $asClient()->postJson("/api/proposals/{$proposal['id']}/conversation")
+            ->assertCreated()
+            ->assertJsonPath('data.type', 'proposal')
+            ->json('data');
+        $asFreelancer()->postJson("/api/conversations/{$conversation['id']}/messages", [
+            'body' => 'I can start this week and will share a tested mobile-first delivery plan before implementation begins.',
+        ])->assertCreated();
+
+        $asClient()->patchJson("/api/proposals/{$proposal['id']}", ['status' => 'hired'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'hired');
+
+        $contract = Contract::where('proposal_id', $proposal['id'])->firstOrFail();
+        $this->assertDatabaseHas('conversations', ['id' => $conversation['id'], 'type' => 'project']);
+
+        $milestone = $asClient()->postJson("/api/contracts/{$contract->id}/milestones", [
+            'title' => 'Dashboard implementation and handover',
+            'description' => 'Deliver the responsive dashboard, bilingual interface states, source code, and concise handover documentation.',
+            'amount' => 550000,
+            'due_date' => now()->addWeeks(3)->toDateString(),
+        ])->assertCreated()
+            ->assertJsonPath('data.client_total_amount', 605000)
+            ->json('data');
+
+        $asFreelancer()->patchJson("/api/milestones/{$milestone['id']}", ['action' => 'start'])->assertOk();
+        $asFreelancer()->postJson("/api/milestones/{$milestone['id']}/submissions", [
+            'note' => 'The bilingual dashboard, setup notes, and source handover are ready for your review.',
+        ])->assertCreated()->assertJsonPath('data.status', 'submitted');
+        $asClient()->patchJson("/api/milestones/{$milestone['id']}", ['action' => 'approve'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'approved');
+
+        $asFreelancer()->postJson("/api/contracts/{$contract->id}/request-completion", [
+            'note' => 'The final source files and bilingual handover notes are included in the approved delivery.',
+        ])->assertOk();
+        $asClient()->postJson("/api/contracts/{$contract->id}/complete")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'completed');
+
+        $asClient()->postJson("/api/contracts/{$contract->id}/reviews", [
+            'rating' => 5,
+            'comment' => 'Clear communication, thoughtful work, and a complete handover.',
+        ])->assertCreated();
+        $asFreelancer()->postJson("/api/contracts/{$contract->id}/reviews", [
+            'rating' => 5,
+            'comment' => 'A well-prepared client with fast and practical feedback.',
+        ])->assertCreated();
+
+        $asFreelancer()->getJson('/api/proposal-credits')
+            ->assertOk()
+            ->assertJsonPath('data.balance', 16);
+        $asFreelancer()->getJson('/api/notifications')
+            ->assertOk()
+            ->assertJsonFragment(['type' => 'proposal_hired'])
+            ->assertJsonFragment(['type' => 'milestone_approved'])
+            ->assertJsonFragment(['type' => 'contract_completed']);
+        $asClient()->getJson('/api/notifications')
+            ->assertOk()
+            ->assertJsonFragment(['type' => 'proposal_received'])
+            ->assertJsonFragment(['type' => 'message_received'])
+            ->assertJsonFragment(['type' => 'milestone_submitted']);
+
+        $this->assertDatabaseHas('contracts', ['id' => $contract->id, 'status' => 'completed']);
+        $this->assertDatabaseHas('marketplace_jobs', ['id' => $job['id'], 'status' => 'completed']);
+        $this->assertDatabaseCount('contract_reviews', 2);
+        $this->assertSame($client['id'], $contract->client_id);
+        $this->assertSame($freelancer['id'], $contract->freelancer_id);
+    }
+
+    public function test_a_user_can_mark_only_their_own_notification_as_read(): void
+    {
+        $user = User::factory()->create();
+        $otherUser = User::factory()->create();
+        $notification = MarketplaceNotification::create([
+            'user_id' => $user->id,
+            'type' => 'message_received',
+            'title' => 'New message',
+            'body' => 'A project message is waiting.',
+            'url' => '/messages',
+        ]);
+        $otherNotification = MarketplaceNotification::create([
+            'user_id' => $otherUser->id,
+            'type' => 'message_received',
+            'title' => 'Private message',
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $this->patchJson("/api/notifications/{$notification->id}/read")
+            ->assertOk()
+            ->assertJsonPath('data.id', $notification->id)
+            ->assertJsonStructure(['data' => ['id', 'read_at']]);
+
+        $this->assertNotNull($notification->fresh()->read_at);
+        $this->patchJson("/api/notifications/{$otherNotification->id}/read")->assertForbidden();
+    }
+
+    public function test_marketplace_updates_are_broadcast_only_to_the_recipient_private_channel(): void
+    {
+        Event::fake([MarketplaceNotificationCreated::class, MarketplaceMessageCreated::class]);
+        $recipient = User::factory()->create();
+
+        app(MarketplaceNotificationService::class)->send($recipient, 'message_received', 'New message', 'A message is waiting.');
+        MarketplaceMessageCreated::dispatch(42, $recipient->id);
+
+        Event::assertDispatched(MarketplaceNotificationCreated::class, function (MarketplaceNotificationCreated $event) use ($recipient) {
+            return $event->notification->user_id === $recipient->id
+                && $event->broadcastOn()[0]->name === "private-marketplace.user.{$recipient->id}";
+        });
+        Event::assertDispatched(MarketplaceMessageCreated::class, function (MarketplaceMessageCreated $event) use ($recipient) {
+            return $event->recipientId === $recipient->id
+                && $event->broadcastOn()[0]->name === "private-marketplace.user.{$recipient->id}";
+        });
+    }
+
+    public function test_users_can_only_authorize_their_own_realtime_channel(): void
+    {
+        $user = User::factory()->create();
+        $otherUser = User::factory()->create();
+        Sanctum::actingAs($user);
+
+        $broadcaster = app(BroadcastManager::class);
+
+        config()->set('broadcasting.default', 'reverb');
+        config()->set('broadcasting.connections.reverb', [
+            'driver' => 'reverb',
+            'key' => 'test-reverb-key',
+            'secret' => 'test-reverb-secret',
+            'app_id' => 'test-reverb-app',
+            'options' => ['host' => '127.0.0.1', 'port' => 8080, 'scheme' => 'http', 'useTLS' => false],
+            'client_options' => [],
+        ]);
+        $broadcaster->forgetDrivers();
+        require base_path('routes/channels.php');
+
+        try {
+            $this->postJson('/api/broadcasting/auth', [
+                'socket_id' => '1234.5678',
+                'channel_name' => "private-marketplace.user.{$user->id}",
+            ])->assertOk();
+
+            $this->postJson('/api/broadcasting/auth', [
+                'socket_id' => '1234.5678',
+                'channel_name' => "private-marketplace.user.{$otherUser->id}",
+            ])->assertForbidden();
+        } finally {
+            config()->set('broadcasting.default', 'null');
+            $broadcaster->forgetDrivers();
+        }
+    }
+
     public function test_users_can_verify_their_email_address_from_a_signed_link(): void
     {
         Notification::fake();
         $user = User::factory()->unverified()->create();
 
         $this->actingAs($user, 'sanctum')->postJson('/api/email/verification-notification')->assertOk()->assertJsonPath('message', 'Verification email sent.');
-        Notification::assertSentTo($user, VerifyEmail::class);
+        Notification::assertSentTo($user, TalentXpanseVerifyEmail::class);
 
         $url = URL::temporarySignedRoute('verification.verify', now()->addMinutes(60), ['id' => $user->id, 'hash' => sha1($user->email)]);
         $this->get($url)->assertRedirect();
@@ -112,6 +379,8 @@ class MarketplaceApiTest extends TestCase
             'password' => 'secure-password',
             'password_confirmation' => 'secure-password',
             'role' => 'client',
+            'terms_accepted' => true,
+            'privacy_accepted' => true,
         ])->assertCreated();
 
         $this->withToken($registration->json('token'))->patchJson('/api/auth/active-role', ['role' => 'freelancer'])->assertForbidden();
@@ -401,6 +670,73 @@ class MarketplaceApiTest extends TestCase
         $this->getJson('/api/admin/audit-logs')->assertOk()->assertJsonPath('data.data.0.action', 'payment_hold.clear');
     }
 
+    public function test_escrow_ledger_records_funding_release_and_disputed_refund_without_a_provider_integration(): void
+    {
+        $paymentConfig = config('marketplace_payments');
+        config()->set('marketplace_payments.enabled', true);
+        config()->set('marketplace_payments.provider', 'sandbox-ledger');
+
+        try {
+            $client = User::factory()->create();
+            $freelancer = User::factory()->create();
+            $admin = User::factory()->create();
+            $job = Job::create(['client_id' => $client->id, 'title' => 'Create an escrow-ready marketplace flow', 'description' => 'Create a milestone workflow that keeps an auditable internal ledger ready for a future payment gateway integration.', 'category' => 'Development & IT', 'budget_min' => 100000, 'budget_max' => 200000, 'status' => 'in_progress']);
+            $proposal = Proposal::create(['job_id' => $job->id, 'freelancer_id' => $freelancer->id, 'cover_letter' => 'I can deliver a reliable financial workflow with clear audit records, careful validation, and safe handling of payment state changes.', 'bid_amount' => 100000, 'delivery_days' => 10, 'status' => 'hired']);
+            $contract = Contract::create(['job_id' => $job->id, 'proposal_id' => $proposal->id, 'client_id' => $client->id, 'freelancer_id' => $freelancer->id, 'title' => $job->title, 'scope' => $job->description, 'agreed_amount' => 200000, 'status' => 'active', 'started_at' => now()]);
+            $firstMilestone = $contract->milestones()->create(['title' => 'Escrow release milestone', 'amount' => 100000, 'platform_fee_basis_points' => 1000, 'client_fee_amount' => 10000, 'client_total_amount' => 110000, 'status' => 'planned', 'funding_status' => 'awaiting_funding']);
+            $escrow = app(MarketplaceEscrowService::class);
+
+            $funding = $escrow->recordFunding($firstMilestone, 'sandbox-ledger', 'funding-1001');
+            $this->assertSame(110000, $funding->ledgerEntries->where('entry_type', 'debit')->sum('amount'));
+            $this->assertSame(110000, $funding->ledgerEntries->where('entry_type', 'credit')->sum('amount'));
+            $this->assertCount(3, $funding->ledgerEntries);
+            $this->assertSame($funding->id, $escrow->recordFunding($firstMilestone, 'sandbox-ledger', 'funding-1001')->id);
+            $this->assertDatabaseHas('contract_milestones', ['id' => $firstMilestone->id, 'funding_status' => 'funded']);
+
+            $firstMilestone->update(['status' => 'approved']);
+            $release = $escrow->recordRelease($firstMilestone, 'sandbox-ledger', 'release-1001');
+            $this->assertSame(110000, $release->ledgerEntries->where('entry_type', 'debit')->sum('amount'));
+            $this->assertSame(110000, $release->ledgerEntries->where('entry_type', 'credit')->sum('amount'));
+            $this->assertCount(4, $release->ledgerEntries);
+            $this->assertDatabaseHas('contract_milestones', ['id' => $firstMilestone->id, 'funding_status' => 'released']);
+
+            $secondMilestone = $contract->milestones()->create(['title' => 'Disputed escrow milestone', 'amount' => 100000, 'platform_fee_basis_points' => 1000, 'client_fee_amount' => 10000, 'client_total_amount' => 110000, 'status' => 'planned', 'funding_status' => 'awaiting_funding']);
+            $escrow->recordFunding($secondMilestone, 'sandbox-ledger', 'funding-1002');
+            $supportRequest = ContractSupportRequest::create(['contract_id' => $contract->id, 'opened_by' => $client->id, 'reason' => 'payment_issue', 'details' => 'The milestone funding needs to remain protected while the project partners and TalentXpanse review the agreed delivery outcome.', 'status' => 'open']);
+            $contract->update(['payment_hold_status' => 'on_hold', 'payment_hold_note' => 'Payment dispute is under review.', 'payment_hold_at' => now()]);
+            $dispute = $escrow->openDispute($contract, $supportRequest);
+            $this->assertNotNull($dispute);
+            $this->assertDatabaseHas('contract_milestones', ['id' => $secondMilestone->id, 'funding_status' => 'disputed']);
+
+            $refund = $escrow->recordRefund($secondMilestone, 'sandbox-ledger', 'refund-1002');
+            $this->assertSame(110000, $refund->ledgerEntries->where('entry_type', 'debit')->sum('amount'));
+            $this->assertSame(110000, $refund->ledgerEntries->where('entry_type', 'credit')->sum('amount'));
+            $this->assertCount(3, $refund->ledgerEntries);
+            $this->assertDatabaseHas('contract_milestones', ['id' => $secondMilestone->id, 'funding_status' => 'refunded']);
+            $contract->update(['payment_hold_status' => 'clear']);
+            $escrow->resumeDisputedFunds($contract, $admin, 'The disputed milestone was refunded and the remaining project balance can continue.');
+            $this->assertDatabaseHas('marketplace_payment_disputes', ['id' => $dispute->id, 'status' => 'resolved', 'resolution' => 'refund']);
+            $this->assertDatabaseCount('marketplace_escrow_ledger_entries', 13);
+
+            $entry = $funding->ledgerEntries->firstWhere('account', 'escrow_cash');
+            try {
+                $entry->update(['amount' => 1]);
+                $this->fail('Expected escrow ledger updates to be rejected.');
+            } catch (LogicException) {
+                $this->assertDatabaseHas('marketplace_escrow_ledger_entries', ['id' => $entry->id, 'amount' => 110000]);
+            }
+
+            try {
+                $entry->delete();
+                $this->fail('Expected escrow ledger deletions to be rejected.');
+            } catch (LogicException) {
+                $this->assertDatabaseHas('marketplace_escrow_ledger_entries', ['id' => $entry->id]);
+            }
+        } finally {
+            config()->set('marketplace_payments', $paymentConfig);
+        }
+    }
+
     public function test_any_authenticated_marketplace_user_can_search_open_jobs_and_available_freelancers(): void
     {
         $client = User::factory()->create();
@@ -411,11 +747,17 @@ class MarketplaceApiTest extends TestCase
         $freelancer->roles()->attach($freelancerRole);
         $freelancer->freelancerProfile()->create(['title' => 'React developer', 'skills' => ['React', 'Laravel'], 'location' => 'Yangon', 'availability' => true]);
         Job::create(['client_id' => $client->id, 'title' => 'React storefront', 'description' => 'Build a responsive React storefront for a growing local retailer.', 'category' => 'Development & IT', 'skills' => ['React'], 'budget_min' => 300000, 'budget_max' => 500000, 'status' => 'open']);
+        $higherBudgetJob = Job::create(['client_id' => $client->id, 'title' => 'React checkout rebuild', 'description' => 'Build a reliable React checkout experience for a growing local retailer.', 'category' => 'Development & IT', 'skills' => ['React'], 'budget_min' => 750000, 'budget_max' => 900000, 'status' => 'open']);
+        $higherRateFreelancer = User::factory()->create(['name' => 'Thiri Win']);
+        $higherRateFreelancer->roles()->attach($freelancerRole);
+        $higherRateFreelancer->freelancerProfile()->create(['title' => 'Senior React developer', 'skills' => ['React'], 'location' => 'Mandalay', 'hourly_rate' => 45000, 'availability' => true]);
 
-        $this->actingAs($client, 'sanctum')->getJson('/api/search?q=React&scope=all')->assertOk()->assertJsonCount(1, 'data.jobs')->assertJsonCount(1, 'data.talent')->assertJsonPath('data.talent.0.user.name', 'Mya Thiri');
-        $this->actingAs($freelancer, 'sanctum')->getJson('/api/search?q=React&scope=all')->assertOk()->assertJsonCount(1, 'data.jobs')->assertJsonCount(1, 'data.talent')->assertJsonPath('data.talent.0.user.name', 'Mya Thiri');
+        $this->actingAs($client, 'sanctum')->getJson('/api/search?q=React&scope=all')->assertOk()->assertJsonCount(2, 'data.jobs')->assertJsonCount(2, 'data.talent')->assertJsonFragment(['name' => 'Mya Thiri']);
+        $this->actingAs($freelancer, 'sanctum')->getJson('/api/search?q=React&scope=all')->assertOk()->assertJsonCount(2, 'data.jobs')->assertJsonCount(2, 'data.talent')->assertJsonFragment(['name' => 'Mya Thiri']);
         $this->actingAs($client, 'sanctum')->getJson('/api/search?scope=jobs&category=Development%20%26%20IT&skill=React&min_budget=200000&max_budget=600000')->assertOk()->assertJsonCount(1, 'data.jobs')->assertJsonPath('data.pagination.jobs.total', 1);
         $this->actingAs($freelancer, 'sanctum')->getJson('/api/search?scope=talent&skill=React&location=Yang&availability=available')->assertOk()->assertJsonCount(1, 'data.talent')->assertJsonPath('data.pagination.talent.total', 1);
+        $this->actingAs($client, 'sanctum')->getJson('/api/search?scope=jobs&skill=React&sort=budget_high')->assertOk()->assertJsonPath('data.jobs.0.id', $higherBudgetJob->id);
+        $this->actingAs($freelancer, 'sanctum')->getJson('/api/search?scope=talent&skill=React&sort=rate_high')->assertOk()->assertJsonPath('data.talent.0.user_id', $higherRateFreelancer->id);
         $this->getJson("/api/freelancers/{$freelancer->id}")->assertOk()->assertJsonPath('data.freelancer_profile.title', 'React developer');
     }
 

@@ -19,6 +19,8 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    private const POLICY_VERSION = '2026-07-30';
+
     public function register(Request $request)
     {
         $data = $request->validate([
@@ -26,6 +28,8 @@ class AuthController extends Controller
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'confirmed', Password::min(8)],
             'role' => ['required', 'in:client,freelancer'],
+            'terms_accepted' => ['accepted'],
+            'privacy_accepted' => ['accepted'],
         ]);
 
         $user = DB::transaction(function () use ($data) {
@@ -33,6 +37,9 @@ class AuthController extends Controller
                 'name' => $data['name'],
                 'email' => $data['email'],
                 'password' => $data['password'],
+                'terms_version' => self::POLICY_VERSION,
+                'terms_accepted_at' => now(),
+                'privacy_accepted_at' => now(),
             ]);
 
             $this->attachRole($user, $data['role']);
@@ -95,6 +102,8 @@ class AuthController extends Controller
         $data = $request->validate([
             'credential' => ['required', 'string'],
             'role' => ['nullable', 'in:client,freelancer'],
+            'terms_accepted' => ['nullable', 'boolean'],
+            'privacy_accepted' => ['nullable', 'boolean'],
         ]);
         $claims = $this->verifyGoogleCredential($data['credential']);
 
@@ -108,11 +117,21 @@ class AuthController extends Controller
             $user = User::where('email', $claims['email'])->first();
 
             if (! $user) {
+                if (! ($data['terms_accepted'] ?? false) || ! ($data['privacy_accepted'] ?? false)) {
+                    throw ValidationException::withMessages([
+                        'terms_accepted' => 'Please accept the Terms of Use before creating an account.',
+                        'privacy_accepted' => 'Please accept the Privacy Policy before creating an account.',
+                    ]);
+                }
+
                 $user = User::create([
                     'name' => ($claims['name'] ?? null) ?: Str::before($claims['email'], '@'),
                     'email' => $claims['email'],
                     'email_verified_at' => now(),
                     'password' => Str::random(64),
+                    'terms_version' => self::POLICY_VERSION,
+                    'terms_accepted_at' => now(),
+                    'privacy_accepted_at' => now(),
                 ]);
                 $this->attachRole($user, $data['role'] ?? 'freelancer');
             }

@@ -2,29 +2,34 @@
 
 namespace App\Services;
 
+use App\Events\MarketplaceNotificationCreated;
 use App\Models\MarketplaceNotification;
 use App\Models\User;
 use App\Notifications\MarketplaceActivityEmail;
 
 class MarketplaceNotificationService
 {
-    public function send(User|int $user, string $type, string $title, ?string $body = null, ?string $url = null): void
+    public function send(User|int $user, string $type, string $title, ?string $body = null, ?string $url = null): ?MarketplaceNotification
     {
         $recipient = $user instanceof User ? $user : User::find($user);
         if (! $recipient || ! $this->isEnabled($recipient, $type)) {
-            return;
+            return null;
         }
 
-        MarketplaceNotification::create([
+        $notification = MarketplaceNotification::create([
             'user_id' => $recipient->id,
             'type' => $type,
             'title' => $title,
             'body' => $body,
             'url' => $url,
         ]);
+        MarketplaceNotificationCreated::dispatch($notification);
+
         if ($this->emailEnabled($recipient, $type)) {
             $recipient->notify(new MarketplaceActivityEmail($title, $body, $url));
         }
+
+        return $notification;
     }
 
     private function isEnabled(User $user, string $type): bool

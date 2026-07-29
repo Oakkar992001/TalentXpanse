@@ -56,6 +56,11 @@ class Contract extends Model
         return $this->hasMany(MarketplacePaymentRecord::class);
     }
 
+    public function paymentDisputes()
+    {
+        return $this->hasMany(MarketplacePaymentDispute::class);
+    }
+
     public function paymentHoldHandler()
     {
         return $this->belongsTo(User::class, 'payment_hold_by');

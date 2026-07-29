@@ -56,4 +56,9 @@ class MarketplacePaymentRecord extends Model
     {
         return $this->belongsTo(User::class, 'freelancer_id');
     }
+
+    public function ledgerEntries()
+    {
+        return $this->hasMany(MarketplaceEscrowLedgerEntry::class);
+    }
 }

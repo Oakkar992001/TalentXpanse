@@ -2,9 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Database\Factories\UserFactory;
 use App\Notifications\TalentXpanseResetPassword;
+use App\Notifications\TalentXpanseVerifyEmail;
+use Database\Factories\UserFactory;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -34,6 +35,9 @@ class User extends Authenticatable implements MustVerifyEmail
         'identity_verified_at',
         'identity_verified_by',
         'notification_preferences',
+        'terms_version',
+        'terms_accepted_at',
+        'privacy_accepted_at',
     ];
 
     protected $appends = ['profile_photo_url'];
@@ -72,6 +76,8 @@ class User extends Authenticatable implements MustVerifyEmail
             'notification_preferences' => 'array',
             'identity_verification_requested_at' => 'datetime',
             'identity_verified_at' => 'datetime',
+            'terms_accepted_at' => 'datetime',
+            'privacy_accepted_at' => 'datetime',
         ];
     }
 
@@ -173,6 +179,11 @@ class User extends Authenticatable implements MustVerifyEmail
     public function sendPasswordResetNotification($token): void
     {
         $this->notify(new TalentXpanseResetPassword($token));
+    }
+
+    public function sendEmailVerificationNotification(): void
+    {
+        $this->notify(new TalentXpanseVerifyEmail);
     }
 
     public function getProfilePhotoUrlAttribute(): ?string

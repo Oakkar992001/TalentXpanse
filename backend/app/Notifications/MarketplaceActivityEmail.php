@@ -3,10 +3,11 @@
 namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class MarketplaceActivityEmail extends Notification
+class MarketplaceActivityEmail extends Notification implements ShouldQueue
 {
     use Queueable;
 
@@ -14,7 +15,9 @@ class MarketplaceActivityEmail extends Notification
         private readonly string $title,
         private readonly ?string $body,
         private readonly ?string $path,
-    ) {}
+    ) {
+        $this->afterCommit();
+    }
 
     public function via(object $notifiable): array
     {

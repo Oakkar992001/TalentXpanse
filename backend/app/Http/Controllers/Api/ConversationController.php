@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\MarketplaceMessageCreated;
 use App\Http\Controllers\Controller;
 use App\Models\Conversation;
 use App\Models\ConversationEvent;
@@ -75,6 +76,7 @@ class ConversationController extends Controller
         $recipientId = $conversation->client_id === $request->user()->id ? $conversation->freelancer_id : $conversation->client_id;
         $preview = $message->body ?: 'Shared a file';
         $notifications->send($recipientId, 'message_received', 'New message', "{$request->user()->name}: ".str($preview)->limit(120), '/messages');
+        MarketplaceMessageCreated::dispatch($conversation->id, $recipientId);
 
         return response()->json(['data' => $message], 201);
     }

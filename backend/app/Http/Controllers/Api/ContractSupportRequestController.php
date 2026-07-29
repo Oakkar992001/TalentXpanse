@@ -6,13 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Contract;
 use App\Models\ContractSupportRequest;
 use App\Services\MarketplaceNotificationService;
+use App\Services\MarketplaceEscrowService;
 use App\Services\MarketplacePaymentSafetyService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class ContractSupportRequestController extends Controller
 {
-    public function store(Request $request, Contract $contract, MarketplaceNotificationService $notifications, MarketplacePaymentSafetyService $paymentSafety)
+    public function store(Request $request, Contract $contract, MarketplaceNotificationService $notifications, MarketplacePaymentSafetyService $paymentSafety, MarketplaceEscrowService $escrow)
     {
         abort_unless(in_array($request->user()->id, [$contract->client_id, $contract->freelancer_id], true), 403, 'You are not part of this contract.');
         abort_unless($contract->status === 'active', 422, 'Support requests are available while a project is active.');
@@ -30,6 +31,7 @@ class ContractSupportRequestController extends Controller
         if ($supportRequest->reason === 'payment_issue') {
             $wasClear = $contract->payment_hold_status !== 'on_hold';
             $paymentSafety->placeHold($contract, null, 'A project participant opened a payment safety request.');
+            $escrow->openDispute($contract, $supportRequest);
             if ($wasClear) {
                 $notifications->send($contract->client_id, 'payment_hold_placed', 'Payment safety hold active', "A payment safety hold is active for {$contract->title}. No release can happen until it is resolved.", "/projects/{$contract->id}");
                 $notifications->send($contract->freelancer_id, 'payment_hold_placed', 'Payment safety hold active', "A payment safety hold is active for {$contract->title}. No release can happen until it is resolved.", "/projects/{$contract->id}");

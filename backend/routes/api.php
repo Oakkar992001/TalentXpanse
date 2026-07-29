@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\FreelancerProfileController;
 use App\Http\Controllers\Api\FreelancerInviteController;
+use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\FreelancerResumeController;
 use App\Http\Controllers\Api\JobController;
 use App\Http\Controllers\Api\MarketplaceNotificationController;
@@ -30,10 +31,11 @@ use App\Http\Controllers\Api\ProposalController;
 use App\Http\Controllers\Api\ProposalOfferController;
 use App\Http\Controllers\Api\ProposalCreditController;
 use App\Http\Controllers\Api\PublicFreelancerController;
+use App\Http\Controllers\Api\RealtimeConfigController;
 use App\Http\Controllers\Api\VerificationRequestController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/health', fn () => response()->json(['status' => 'ok', 'application' => config('app.name')]));
+Route::get('/health', [HealthController::class, 'show']);
 
 Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:6,1');
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
@@ -47,6 +49,7 @@ Route::get('/jobs', [JobController::class, 'index']);
 
 Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
     Route::get('/auth/user', [AuthController::class, 'user']);
+    Route::get('/realtime/config', [RealtimeConfigController::class, 'show']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/email/verification-notification', [EmailVerificationController::class, 'send'])->middleware('throttle:6,1');
     Route::post('/auth/roles', [AuthController::class, 'addRole']);
@@ -59,7 +62,7 @@ Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'show']);
     Route::get('/proposal-credits', [ProposalCreditController::class, 'show']);
     Route::get('/search', [MarketplaceSearchController::class, 'search']);
-    Route::post('/reports', [MarketplaceReportController::class, 'store']);
+    Route::post('/reports', [MarketplaceReportController::class, 'store'])->middleware('throttle:10,1');
     Route::get('/marketplace-saves', [MarketplaceSaveController::class, 'index']);
     Route::put('/saved-jobs/{job}', [MarketplaceSaveController::class, 'saveJob']);
     Route::delete('/saved-jobs/{job}', [MarketplaceSaveController::class, 'removeJob']);
@@ -96,13 +99,13 @@ Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
     Route::get('/conversations/summary', [ConversationController::class, 'summary']);
     Route::get('/conversations/startable-proposals', [ConversationController::class, 'startableProposals']);
     Route::get('/conversations/{conversation}', [ConversationController::class, 'show']);
-    Route::post('/conversations/{conversation}/messages', [ConversationController::class, 'storeMessage']);
+    Route::post('/conversations/{conversation}/messages', [ConversationController::class, 'storeMessage'])->middleware('throttle:60,1');
     Route::get('/conversation-message-files/{file}/download', [ConversationController::class, 'downloadFile']);
     Route::get('/contracts', [ContractController::class, 'index']);
     Route::get('/contracts/{contract}', [ContractController::class, 'show']);
     Route::post('/contracts/{contract}/milestones', [ContractController::class, 'storeMilestone']);
     Route::patch('/milestones/{milestone}', [ContractController::class, 'updateMilestone']);
-    Route::post('/milestones/{milestone}/submissions', [MilestoneSubmissionController::class, 'store']);
+    Route::post('/milestones/{milestone}/submissions', [MilestoneSubmissionController::class, 'store'])->middleware('throttle:20,1');
     Route::get('/milestone-submission-files/{file}/download', [MilestoneSubmissionController::class, 'download']);
     Route::post('/contracts/{contract}/request-completion', [ContractController::class, 'requestCompletion']);
     Route::post('/contracts/{contract}/complete', [ContractController::class, 'complete']);
@@ -118,8 +121,8 @@ Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
     Route::post('/portfolio-items', [PortfolioController::class, 'store']);
     Route::patch('/portfolio-items/{portfolioItem}', [PortfolioController::class, 'update']);
     Route::delete('/portfolio-items/{portfolioItem}', [PortfolioController::class, 'destroy']);
-    Route::post('/freelancer-resume', [FreelancerResumeController::class, 'store']);
-    Route::post('/profile-photo', [ProfilePhotoController::class, 'store']);
+    Route::post('/freelancer-resume', [FreelancerResumeController::class, 'store'])->middleware('throttle:10,1');
+    Route::post('/profile-photo', [ProfilePhotoController::class, 'store'])->middleware('throttle:10,1');
     Route::get('/jobs/mine', [JobController::class, 'mine']);
     Route::post('/jobs', [JobController::class, 'store']);
     Route::patch('/jobs/{job}', [JobController::class, 'update']);
@@ -127,7 +130,7 @@ Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
     Route::get('/freelancer-invites', [FreelancerInviteController::class, 'index']);
     Route::patch('/freelancer-invites/{invite}', [FreelancerInviteController::class, 'update']);
 
-    Route::post('/jobs/{job}/proposals', [ProposalController::class, 'store']);
+    Route::post('/jobs/{job}/proposals', [ProposalController::class, 'store'])->middleware('throttle:20,1');
     Route::get('/jobs/{job}/proposals', [ProposalController::class, 'forJob']);
     Route::get('/proposals/mine', [ProposalController::class, 'mine']);
     Route::patch('/proposals/{proposal}', [ProposalController::class, 'updateStatus']);

@@ -7,18 +7,23 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "node e2e/run.mjs",
+    "test:e2e:staging": "node e2e/run.mjs --target=staging"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.12.0",
     "axios": "^1.18.1",
     "bootstrap": "^5.3.8",
+    "laravel-echo": "^2.4.0",
+    "pusher-js": "^8.6.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-redux": "^9.3.0",
     "react-router-dom": "^7.18.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",

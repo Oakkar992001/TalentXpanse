@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import { useConfirmation } from '../contexts/ConfirmContext'
 import '../work-management.css'
 
 const money = (value) => `Ks ${Number(value || 0).toLocaleString()}`
@@ -89,6 +90,7 @@ function FreelancerProposalCard({ proposal, busy, onWithdraw, onRespondOffer, co
 export default function WorkManagementScreen() {
   const { role } = useOutletContext()
   const { errorMessage } = useAuth()
+  const confirm = useConfirmation()
   const [items, setItems] = useState([])
   const [invites, setInvites] = useState([])
   const [error, setError] = useState('')
@@ -121,7 +123,12 @@ export default function WorkManagementScreen() {
 
   const updateJob = async (job, status) => {
     const action = status === 'closed' ? 'close' : status === 'paused' ? 'pause' : 'reopen'
-    if (!window.confirm(`Are you sure you want to ${action} “${job.title}”?`)) return
+    if (!await confirm({
+      title: `${action[0].toUpperCase()}${action.slice(1)} “${job.title}”?`,
+      message: status === 'closed' ? 'This job will stop accepting proposals. Keep it open only if you are still reviewing candidates.' : `You can ${status === 'paused' ? 'reopen' : 'pause'} this job again later.`,
+      confirmLabel: `${action[0].toUpperCase()}${action.slice(1)} job`,
+      tone: status === 'closed' ? 'danger' : 'neutral',
+    })) return
     setBusy(`job-${job.id}`)
     setError('')
     setNotice('')
@@ -137,7 +144,7 @@ export default function WorkManagementScreen() {
   }
 
   const withdraw = async (proposal) => {
-    if (!window.confirm(`Withdraw your proposal for “${proposal.job?.title}”? Proposal Credits are not returned after withdrawal.`)) return
+    if (!await confirm({ title: `Withdraw your proposal for “${proposal.job?.title}”?`, message: 'The client will be notified. Proposal Credits are not returned after withdrawal.', confirmLabel: 'Withdraw proposal' })) return
     setBusy(`proposal-${proposal.id}`)
     setError('')
     setNotice('')
@@ -154,10 +161,12 @@ export default function WorkManagementScreen() {
 
   const respondOffer = async (offer, status) => {
     const isAccepting = status === 'accepted'
-    const prompt = isAccepting
-      ? 'Accept this offer? This will start the contract with the listed milestones.'
-      : 'Decline this offer? The client will be notified and can send another offer.'
-    if (!window.confirm(prompt)) return
+    if (!await confirm({
+      title: isAccepting ? 'Accept this offer?' : 'Decline this offer?',
+      message: isAccepting ? 'This starts the contract with the listed milestones.' : 'The client will be notified and can send another offer.',
+      confirmLabel: isAccepting ? 'Accept offer' : 'Decline offer',
+      tone: isAccepting ? 'neutral' : 'danger',
+    })) return
     setBusy(`offer-${offer.id}`)
     setError('')
     setNotice('')

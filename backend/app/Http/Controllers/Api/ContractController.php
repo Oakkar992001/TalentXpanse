@@ -50,6 +50,7 @@ class ContractController extends Controller
             'platform_fee_basis_points' => $quote['platform_fee_basis_points'],
             'client_fee_amount' => $quote['platform_fee_amount'],
             'client_total_amount' => $quote['client_total_amount'],
+            'funding_status' => $payments->gatewayConfigured() ? 'awaiting_funding' : 'not_configured',
         ]);
         $this->event($contract, 'milestone_created', "Milestone created: {$milestone->title}");
         $notifications->send($contract->freelancer_id, 'milestone_created', 'New milestone created', "{$milestone->title} was added to {$contract->title}.", "/projects/{$contract->id}");
@@ -93,12 +94,13 @@ class ContractController extends Controller
         return ['data' => $milestone->fresh()];
     }
 
-    public function complete(Request $request, Contract $contract, MarketplaceNotificationService $notifications)
+    public function complete(Request $request, Contract $contract, MarketplaceNotificationService $notifications, MarketplacePaymentService $payments)
     {
         abort_unless($contract->client_id === $request->user()->id, 403, 'Only the client can complete a contract.');
         abort_unless($contract->status === 'active', 422, 'This contract is no longer active.');
         abort_if($contract->payment_hold_status === 'on_hold', 422, 'Resolve the active payment safety hold before completing this project.');
         abort_unless($this->hasApprovedEveryMilestone($contract), 422, 'Approve every milestone before completing this contract.');
+        abort_unless($payments->canComplete($contract), 422, 'Every approved milestone must be released before completing this contract.');
 
         $contract->update(['status' => 'completed', 'completed_at' => now()]);
         $contract->job?->update(['status' => 'completed']);
