@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\MarketplaceSearchController;
 use App\Http\Controllers\Api\MarketplaceSaveController;
 use App\Http\Controllers\Api\MarketplaceSavedSearchController;
 use App\Http\Controllers\Api\MarketplaceReportController;
+use App\Http\Controllers\Api\MarketplaceReliabilityController;
 use App\Http\Controllers\Api\MilestoneSubmissionController;
 use App\Http\Controllers\Api\PortfolioController;
 use App\Http\Controllers\Api\PasswordController;
@@ -61,6 +62,7 @@ Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
 
     Route::get('/dashboard', [DashboardController::class, 'show']);
     Route::get('/proposal-credits', [ProposalCreditController::class, 'show']);
+    Route::get('/reliability', [MarketplaceReliabilityController::class, 'show']);
     Route::get('/search', [MarketplaceSearchController::class, 'search']);
     Route::post('/reports', [MarketplaceReportController::class, 'store'])->middleware('throttle:10,1');
     Route::get('/marketplace-saves', [MarketplaceSaveController::class, 'index']);
@@ -85,6 +87,8 @@ Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
         Route::get('/payment-records', [AdminController::class, 'paymentRecords']);
         Route::get('/audit-logs', [AdminController::class, 'auditLogs']);
         Route::get('/verifications', [AdminController::class, 'verifications']);
+        Route::get('/reliability', [AdminController::class, 'reliability']);
+        Route::patch('/reliability-events/{reliabilityEvent}', [AdminController::class, 'updateReliabilityEvent']);
         Route::patch('/users/{user}/identity-verification', [AdminController::class, 'updateIdentityVerification']);
         Route::patch('/client-profiles/{clientProfile}/company-verification', [AdminController::class, 'updateCompanyVerification']);
         Route::patch('/contracts/{contract}/payment-hold', [AdminController::class, 'updatePaymentHold']);

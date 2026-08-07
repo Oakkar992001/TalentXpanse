@@ -37,7 +37,9 @@ export const backendEnvironment = {
   DB_FOREIGN_KEYS: 'true',
   CACHE_STORE: 'array',
   SESSION_DRIVER: 'array',
-  QUEUE_CONNECTION: 'sync',
+  // Mirror production: notifications are placed on the database queue and do
+  // not delay the registration response while an email is being prepared.
+  QUEUE_CONNECTION: 'database',
   MAIL_MAILER: 'array',
   BROADCAST_CONNECTION: 'null',
   MARKETPLACE_EMAIL_NOTIFICATIONS_ENABLED: 'false',

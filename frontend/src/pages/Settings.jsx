@@ -5,7 +5,9 @@ import { useAuth } from '../contexts/AuthContext'
 import SettingsSidebar from '../components/SettingsSidebar'
 import PasswordSecuritySettings from '../components/PasswordSecuritySettings'
 import NotificationSettings from '../components/NotificationSettings'
+import ReliabilitySettings from '../components/ReliabilitySettings'
 import VerificationSettings from '../components/VerificationSettings'
+import ProposalCreditsSettings from '../components/ProposalCreditsSettings'
 import '../settings.css'
 
 const roleName = (role) => role === 'client' ? 'Client' : 'Freelancer'
@@ -17,6 +19,7 @@ const pageTitle = {
   notifications: 'Notification settings',
   verification: 'Identity and verification',
   credits: 'Membership and credits',
+  reliability: 'Marketplace reliability',
 }
 
 export default function SettingsScreen({ section = 'information' }) {
@@ -142,10 +145,10 @@ export default function SettingsScreen({ section = 'information' }) {
           <button disabled={busy || !dirty} className="button button-primary">{busy ? 'Saving…' : 'Save changes'}</button>
         </form>
         <section className="settings-card settings-note"><h2>Account security</h2><p>Email verification and password changes are available. Identity verification will be introduced before live payments.</p></section>
-      </> : section === 'security' ? <PasswordSecuritySettings passwordLoginEnabled={account.password_login_enabled} /> : section === 'notifications' ? <NotificationSettings /> : section === 'account' ? <>
+      </> : section === 'security' ? <PasswordSecuritySettings passwordLoginEnabled={account.password_login_enabled} /> : section === 'notifications' ? <NotificationSettings /> : section === 'reliability' ? <ReliabilitySettings /> : section === 'account' ? <>
         <section className="settings-card"><p className="eyebrow">Active workspace</p><h2>Choose how you use TalentXpanse</h2><p className="settings-copy">Switching changes your marketplace experience without creating another user or ending your session.</p><div className="workspace-cards">{account.roles.map((role) => <article key={role}><span>{role === 'client' ? 'C' : 'F'}</span><div><b>{roleName(role)} workspace</b><p>{role === account.active_role ? 'Currently active' : 'Available on this account'}</p></div>{role === account.active_role ? <em>Active</em> : <button disabled={busy} onClick={() => activate(role)}>Switch to {roleName(role)}</button>}</article>)}</div>{missingRole && <div className="additional-workspace"><div><h3>Add {roleName(missingRole)} workspace</h3><p>Use the same sign-in for a separate {missingRole} profile. You will be guided through setup before it becomes active.</p></div><button disabled={busy} className="button button-outline" onClick={() => addWorkspace(missingRole)}>Add {roleName(missingRole)}</button></div>}</section>
         <section className="settings-card settings-note"><h2>Privacy and account closure</h2><p>Read our <Link to="/privacy">Privacy Policy</Link> and <Link to="/terms">Terms of Use</Link>. Account closure and data requests must preserve active-project, dispute, and required payment records; contact support once that workflow is available.</p></section>
-      </> : <section className="settings-card credits-settings"><p className="eyebrow">Freelancer workspace</p><h2>Proposal Credits</h2>{credits ? <><strong>{credits.balance}</strong><span>available credits</span><p>{credits.monthly_allowance || 20} credits are granted each month. Credit costs are shown before you submit a proposal.</p></> : <p className="settings-loading">Loading credit balance…</p>}</section>}
+      </> : <ProposalCreditsSettings credits={credits} />}
     </main></div>
   </section>
 }

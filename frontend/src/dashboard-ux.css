@@ -11,7 +11,7 @@
 .workspace-focus p:not(.eyebrow) { max-width:710px; margin:6px 0 0; color:var(--muted); font-size:13px; line-height:1.55; }
 .workspace-focus .button { flex:none; min-height:42px; padding:0 15px; font-size:12px; }
 
-.workspace-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:13px; margin-bottom:20px; }
+.workspace-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:13px; margin-bottom:20px; }
 .workspace-metric { position:relative; display:grid; grid-template-columns:43px 1fr auto; align-items:center; gap:12px; min-height:112px; padding:18px; border:1px solid var(--line); border-radius:14px; background:var(--surface); color:var(--text); transition:border-color .18s,box-shadow .18s,transform .18s; }
 .workspace-metric:hover { border-color:color-mix(in srgb,var(--brand) 42%,var(--line)); box-shadow:var(--shadow); transform:translateY(-1px); }
 .workspace-metric > svg { width:17px; height:17px; color:var(--muted); }

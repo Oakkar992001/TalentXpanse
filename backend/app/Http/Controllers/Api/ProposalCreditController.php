@@ -16,8 +16,9 @@ class ProposalCreditController extends Controller
         return ['data' => $credits->summaryFor($request->user()) + [
             'transactions' => ProposalCreditTransaction::query()
                 ->where('user_id', $request->user()->id)
-                ->latest()
-                ->take(10)
+                ->latest('created_at')
+                ->latest('id')
+                ->take(20)
                 ->get(),
         ]];
     }

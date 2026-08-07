@@ -8,11 +8,12 @@ use App\Models\ContractReview;
 use App\Models\Conversation;
 use App\Models\ConversationEvent;
 use App\Services\MarketplaceNotificationService;
+use App\Services\MarketplaceReliabilityService;
 use Illuminate\Http\Request;
 
 class ContractReviewController extends Controller
 {
-    public function store(Request $request, Contract $contract, MarketplaceNotificationService $notifications)
+    public function store(Request $request, Contract $contract, MarketplaceNotificationService $notifications, MarketplaceReliabilityService $reliability)
     {
         $this->authorizeParticipant($request, $contract);
         abort_unless($contract->status === 'completed', 422, 'Reviews are available after the project is completed.');
@@ -32,6 +33,7 @@ class ContractReviewController extends Controller
             'reviewer_id' => $reviewerId,
             'reviewed_user_id' => $reviewedUserId,
         ]);
+        $reliability->recordPositiveReview($review->load('reviewedUser'), $contract);
 
         $this->event($contract, 'review_submitted', "{$request->user()->name} submitted a project review.");
         $notifications->send($reviewedUserId, 'review_submitted', 'A project review was submitted', 'Your review remains private until you submit yours or the 14-day window ends.', "/projects/{$contract->id}");

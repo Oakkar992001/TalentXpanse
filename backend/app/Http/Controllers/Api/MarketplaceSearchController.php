@@ -6,13 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\FreelancerProfile;
 use App\Models\Job;
 use App\Services\TrustSummaryService;
+use App\Services\MarketplaceReliabilityService;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Validation\Rule;
 
 class MarketplaceSearchController extends Controller
 {
-    public function search(Request $request, TrustSummaryService $trust)
+    public function search(Request $request, TrustSummaryService $trust, MarketplaceReliabilityService $reliability)
     {
         $data = $request->validate([
             'q' => ['nullable', 'string', 'max:100'],
@@ -68,6 +69,11 @@ class MarketplaceSearchController extends Controller
 
         if ($scope !== 'jobs') {
             $talentQuery = FreelancerProfile::query()
+                ->leftJoin('marketplace_reliability_profiles as reliability_profiles', function ($join) {
+                    $join->on('freelancer_profiles.user_id', '=', 'reliability_profiles.user_id')
+                        ->where('reliability_profiles.role', '=', 'freelancer');
+                })
+                ->select('freelancer_profiles.*')
                 ->when($term !== '', fn ($query) => $query->where(fn ($profiles) => $profiles->where('title', 'like', "%{$term}%")->orWhere('location', 'like', "%{$term}%")->orWhere('skills', 'like', "%{$term}%")->orWhereHas('user', fn ($users) => $users->where('name', 'like', "%{$term}%"))))
                 ->when($data['skill'] ?? null, fn ($query, $skill) => $query->whereJsonContains('skills', $skill))
                 ->when($data['location'] ?? null, fn ($query, $location) => $query->where('location', 'like', "%{$location}%"))
@@ -75,6 +81,8 @@ class MarketplaceSearchController extends Controller
                 ->when($data['max_rate'] ?? null, fn ($query, $maximum) => $query->where('hourly_rate', '<=', $maximum))
                 ->when(($data['availability'] ?? null) === 'available', fn ($query) => $query->where('availability', true))
                 ->with('user');
+
+            $talentQuery->orderByRaw("case reliability_profiles.search_visibility when 'limited' then 2 when 'reduced' then 1 else 0 end");
 
             match ($data['sort'] ?? 'newest') {
                 'rate_high' => $talentQuery->orderByDesc('hourly_rate'),
@@ -90,9 +98,16 @@ class MarketplaceSearchController extends Controller
                 $talent = $talentQuery->take(6)->get();
             }
 
-            $talent = $talent->map(function (FreelancerProfile $profile) use ($trust) {
+            $talent = $talent->map(function (FreelancerProfile $profile) use ($trust, $reliability) {
                 $profile->user?->setAttribute('trust_summary', $trust->for($profile->user));
-
+                $summary = $reliability->summaryFor($profile->user, 'freelancer', false);
+                $profile->user?->setAttribute('reliability_summary', collect($summary)->only([
+                    'tier',
+                    'tier_label',
+                    'completed_projects_count',
+                    'positive_reviews_count',
+                    'average_rating',
+                ])->all());
                 return $profile;
             })->values();
         }

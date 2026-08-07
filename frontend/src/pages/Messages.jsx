@@ -4,6 +4,7 @@ import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import MarketplaceReportButton from '../components/MarketplaceReportButton'
 import { subscribeToUserChannel } from '../services/realtime'
+import '../messages-polish.css'
 
 const initials = (name) => name?.split(' ').map((part) => part[0]).slice(0, 2).join('') || 'TX'
 const acceptedFiles = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.csv,.jpg,.jpeg,.png,.webp'
@@ -206,7 +207,7 @@ export default function MessagesScreen() {
             {showJumpToLatest && <button type="button" className="jump-to-latest" onClick={jumpToLatest}>Jump to latest message</button>}
             {conversation.messages?.map((item) => item.kind === 'system'
               ? <p className="chat-system-event" key={item.id}>{item.body}<small>{new Date(item.created_at).toLocaleString()}</small></p>
-              : <article className={item.sender_id === user.id ? 'sent' : ''} key={item.id}><p>{item.body}</p>{item.files?.length > 0 && <div className="message-files">{item.files.map((file) => <button type="button" key={file.id} onClick={() => downloadAttachment(file)}><AttachmentIcon /><span><b>{file.original_name}</b><small>{formatBytes(file.file_size)}</small></span></button>)}</div>}<small>{new Date(item.created_at).toLocaleString()}</small>{item.sender_id !== user.id && <MarketplaceReportButton targetType="message" targetId={item.id} />}</article>)}
+              : <article className={item.sender_id === user.id ? 'sent' : ''} key={item.id}><p>{item.body}</p>{item.files?.length > 0 && <div className="message-files">{item.files.map((file) => <button type="button" key={file.id} onClick={() => downloadAttachment(file)}><AttachmentIcon /><span><b>{file.original_name}</b><small>{formatBytes(file.file_size)}</small></span></button>)}</div>}<div className="message-meta"><small>{new Date(item.created_at).toLocaleString()}</small>{item.sender_id !== user.id && <MarketplaceReportButton targetType="message" targetId={item.id} compact />}</div></article>)}
           </div>
           <form className="chat-compose" onSubmit={send}>
             {attachments.length > 0 && <div className="chat-attachment-list">{attachments.map((file, index) => <span key={`${file.name}-${file.lastModified}`}><AttachmentIcon />{file.name} <button type="button" onClick={() => removeAttachment(index)} aria-label={`Remove ${file.name}`}>×</button></span>)}</div>}

@@ -5,24 +5,25 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\ProfileReadinessService;
 use App\Services\TrustSummaryService;
+use App\Services\MarketplaceReliabilityService;
 use Illuminate\Http\Request;
 
 class AccountSettingsController extends Controller
 {
-    public function show(Request $request, TrustSummaryService $trust, ProfileReadinessService $readiness)
+    public function show(Request $request, TrustSummaryService $trust, ProfileReadinessService $readiness, MarketplaceReliabilityService $reliability)
     {
-        return ['data' => $this->payload($request, $trust, $readiness)];
+        return ['data' => $this->payload($request, $trust, $readiness, $reliability)];
     }
 
-    public function update(Request $request, TrustSummaryService $trust, ProfileReadinessService $readiness)
+    public function update(Request $request, TrustSummaryService $trust, ProfileReadinessService $readiness, MarketplaceReliabilityService $reliability)
     {
         $data = $request->validate(['name' => ['required', 'string', 'min:2', 'max:255']]);
         $request->user()->update($data);
 
-        return ['data' => $this->payload($request, $trust, $readiness)];
+        return ['data' => $this->payload($request, $trust, $readiness, $reliability)];
     }
 
-    private function payload(Request $request, TrustSummaryService $trust, ProfileReadinessService $readiness): array
+    private function payload(Request $request, TrustSummaryService $trust, ProfileReadinessService $readiness, MarketplaceReliabilityService $reliability): array
     {
         $user = $request->user()->fresh()->load('roles', 'freelancerProfile', 'clientProfile', 'oauthIdentities', 'portfolioItems', 'freelancerResume');
         $user->clientProfile?->makeVisible([
@@ -55,6 +56,7 @@ class AccountSettingsController extends Controller
             'freelancer_profile' => $user->freelancerProfile,
             'client_profile' => $user->clientProfile,
             'trust_summary' => $trust->for($user),
+            'reliability' => $roles->filter(fn (string $role) => in_array($role, ['client', 'freelancer'], true))->mapWithKeys(fn (string $role) => [$role => $reliability->summaryFor($user, $role)])->all(),
         ];
     }
 }

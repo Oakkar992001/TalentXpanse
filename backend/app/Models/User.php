@@ -116,6 +116,21 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(ProposalCreditTransaction::class);
     }
 
+    public function proposalCreditGrants()
+    {
+        return $this->hasMany(ProposalCreditGrant::class);
+    }
+
+    public function reliabilityProfiles()
+    {
+        return $this->hasMany(MarketplaceReliabilityProfile::class);
+    }
+
+    public function reliabilityEvents()
+    {
+        return $this->hasMany(MarketplaceReliabilityEvent::class);
+    }
+
     public function savedJobs()
     {
         return $this->hasMany(MarketplaceSavedJob::class);

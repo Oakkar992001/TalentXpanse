@@ -15,6 +15,7 @@ export default function SettingsSidebar() {
   ]
 
   if (user?.roles?.includes('freelancer')) links.push(['/settings/credits', 'Membership & Credits'])
+  if (user?.roles?.some((role) => ['client', 'freelancer'].includes(role))) links.push(['/settings/reliability', 'Marketplace Reliability'])
 
   const active = links.find(([to]) => pathname === to)?.[1] || 'Settings'
 

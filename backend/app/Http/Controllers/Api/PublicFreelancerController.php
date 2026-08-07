@@ -5,10 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\TrustSummaryService;
+use App\Services\MarketplaceReliabilityService;
 
 class PublicFreelancerController extends Controller
 {
-    public function show(User $user, TrustSummaryService $trust)
+    public function show(User $user, TrustSummaryService $trust, MarketplaceReliabilityService $reliability)
     {
         abort_unless($user->freelancerProfile()->exists(), 404, 'Freelancer profile not found.');
         $user->load('freelancerProfile', 'portfolioItems');
@@ -35,6 +36,7 @@ class PublicFreelancerController extends Controller
                 'image_url' => $item->image_url,
             ])->values(),
             'trust_summary' => $trust->for($user),
+            'reliability' => $reliability->publicSummaryFor($user, 'freelancer'),
         ]];
     }
 }

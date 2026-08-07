@@ -9,6 +9,7 @@ use App\Models\Conversation;
 use App\Models\ConversationEvent;
 use App\Services\MarketplacePaymentService;
 use App\Services\MarketplaceNotificationService;
+use App\Services\MarketplaceReliabilityService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -94,7 +95,7 @@ class ContractController extends Controller
         return ['data' => $milestone->fresh()];
     }
 
-    public function complete(Request $request, Contract $contract, MarketplaceNotificationService $notifications, MarketplacePaymentService $payments)
+    public function complete(Request $request, Contract $contract, MarketplaceNotificationService $notifications, MarketplacePaymentService $payments, MarketplaceReliabilityService $reliability)
     {
         abort_unless($contract->client_id === $request->user()->id, 403, 'Only the client can complete a contract.');
         abort_unless($contract->status === 'active', 422, 'This contract is no longer active.');
@@ -104,6 +105,7 @@ class ContractController extends Controller
 
         $contract->update(['status' => 'completed', 'completed_at' => now()]);
         $contract->job?->update(['status' => 'completed']);
+        $reliability->recordCompletedContract($contract->fresh(['client', 'freelancer']));
         $event = $contract->freelancer_completion_requested_at
             ? 'The client confirmed completion after the freelancer marked the work ready.'
             : 'The client completed the contract after approving every milestone.';
@@ -132,22 +134,35 @@ class ContractController extends Controller
         return ['data' => $contract->fresh('milestones')];
     }
 
-    public function close(Request $request, Contract $contract, MarketplaceNotificationService $notifications)
+    public function close(Request $request, Contract $contract, MarketplaceNotificationService $notifications, MarketplaceReliabilityService $reliability)
     {
         $this->authorizeParticipant($request, $contract);
         abort_unless($contract->status === 'active', 422, 'Only an active project can be closed.');
         abort_if($contract->payment_hold_status === 'on_hold', 422, 'Resolve the active payment safety hold before closing this project.');
         abort_if($contract->milestones()->whereIn('status', ['in_progress', 'submitted', 'revision_requested'])->exists(), 422, 'Use a project support request before closing a project with active or submitted delivery work.');
-        $data = $request->validate(['reason' => ['required', 'string', 'min:20', 'max:2000']]);
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'min:20', 'max:2000'],
+            'reason_code' => ['required', Rule::in(['mutual_agreement', 'scope_or_budget_change', 'client_no_show', 'freelancer_no_show', 'personal_emergency', 'other'])],
+        ]);
 
         $contract->update([
             'status' => 'cancelled',
             'closed_by' => $request->user()->id,
             'close_reason' => $data['reason'],
+            'close_reason_code' => $data['reason_code'],
             'closed_at' => now(),
         ]);
         $contract->job?->update(['status' => 'cancelled']);
-        $this->event($contract, 'contract_closed', 'Project closed. A project partner recorded a closing reason.');
+        $reportedUser = match ($data['reason_code']) {
+            'client_no_show' => $contract->client,
+            'freelancer_no_show' => $contract->freelancer,
+            default => null,
+        };
+        if ($reportedUser) {
+            $reportedRole = $data['reason_code'] === 'client_no_show' ? 'client' : 'freelancer';
+            $reliability->recordCancellationConcern($reportedUser, $reportedRole, $contract, $data['reason_code'], $data['reason']);
+        }
+        $this->event($contract, 'contract_closed', $reportedUser ? 'Project closed. A reliability concern was sent to operations for fair review.' : 'Project closed. A project partner recorded a closing reason.');
         $partnerId = $contract->client_id === $request->user()->id ? $contract->freelancer_id : $contract->client_id;
         $notifications->send($partnerId, 'contract_closed', 'Project closed', "{$contract->title} was closed. Review the project activity for the recorded reason.", "/projects/{$contract->id}");
 

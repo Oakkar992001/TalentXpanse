@@ -31,6 +31,7 @@ function ResultCard({ job, profile, canSave, saved, saving, onToggleSave }) {
     <p>{isJob ? job.category : profile.location || 'Myanmar'}</p>
     <h3>{isJob ? job.title : profile.user?.name}</h3>
     <small>{isJob ? `${job.client?.client_profile?.company_name || job.client?.name} | ${job.duration || 'Flexible'}` : profile.title || 'Freelancer'}</small>
+    {!isJob && profile.user?.reliability_summary?.tier_label && <span className="search-reliability-tier">{profile.user.reliability_summary.tier_label} reliability</span>}
     <div>{item.skills?.map((skill) => <span key={skill}>{skill}</span>)}</div>
     <b>{isJob ? job.budget_type === 'hourly' ? `${money(job.budget_min)}/hr` : `${money(job.budget_min)} - ${money(job.budget_max)}` : profile.user?.trust_summary?.average_rating ? `★ ${profile.user.trust_summary.average_rating}` : 'New on TalentXpanse'}</b>
     <footer><Link to={detailPath}>View {isJob ? 'opportunity' : 'profile'}</Link>{canSave && <button type="button" className={`save-result-button ${saved ? 'saved' : ''}`} disabled={saving} onClick={() => onToggleSave(saveKind, id, item)}>{saved ? 'Saved' : 'Save'}</button>}</footer>
@@ -58,7 +59,9 @@ export default function SearchResultsScreen() {
   const [savingSearch, setSavingSearch] = useState(false)
   const scope = params.get('scope') || 'all'
   const query = params.get('q') || ''
-  const requestParams = useMemo(() => Object.fromEntries(params.entries()), [params])
+  const searchParamString = params.toString()
+  const requestParams = useMemo(() => Object.fromEntries(new URLSearchParams(searchParamString).entries()), [searchParamString])
+  const userId = user?.id
   const canSaveJobs = user?.roles?.includes('freelancer')
   const canSaveTalent = user?.roles?.includes('client')
   const canSaveSearch = ['jobs', 'talent'].includes(scope)
@@ -80,7 +83,7 @@ export default function SearchResultsScreen() {
   }, [user?.id, loadSaved, loadSavedSearches])
 
   useEffect(() => {
-    if (!user) return undefined
+    if (!userId) return undefined
     if (scope === 'saved') { setLoading(false); return undefined }
     let active = true
     setLoading(true)
@@ -90,7 +93,7 @@ export default function SearchResultsScreen() {
       .catch((requestError) => { if (active) setError(errorMessage(requestError)) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [requestParams, scope, user, errorMessage])
+  }, [requestParams, scope, userId, errorMessage])
 
   if (!user) return <section className="simple-page"><h1>Search the marketplace</h1><p>Log in to search jobs and freelancers.</p><Link className="button button-primary" to="/login">Log in</Link></section>
 

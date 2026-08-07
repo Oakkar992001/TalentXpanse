@@ -1,9 +1,10 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useOutletContext, useParams } from 'react-router-dom'
 import { PreferencesProvider } from './contexts/PreferencesContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { NotificationProvider } from './contexts/NotificationContext'
 import { ConfirmProvider } from './contexts/ConfirmContext'
+import AppErrorBoundary from './components/AppErrorBoundary'
 
 const AppLayout = lazy(() => import('./layouts/AppLayout'))
 const Page = lazy(() => import('./pages/Page'))
@@ -53,10 +54,20 @@ function GuestFreelancerProfile() {
   return <GuestOnly redirectTo={`/search/freelancers/${id}`}><FreelancerPublicProfile /></GuestOnly>
 }
 
+function RequireAuth() {
+  const { user, loading } = useAuth()
+  const layoutContext = useOutletContext()
+
+  if (loading) return <main className="route-loading" aria-live="polite">Loading your workspace...</main>
+  if (!user) return <Navigate to="/login" replace />
+
+  return <Outlet context={layoutContext} />
+}
+
 function App() {
   const pages = [['/', 'Home'], ['/how-it-works', 'HowItWorks'], ['/about', 'About'], ['/contact', 'Contact']]
 
-  return <PreferencesProvider><AuthProvider><NotificationProvider><ConfirmProvider><BrowserRouter><Suspense fallback={<RouteFallback />}><Routes>
+  return <PreferencesProvider><AuthProvider><NotificationProvider><ConfirmProvider><BrowserRouter><AppErrorBoundary><Suspense fallback={<RouteFallback />}><Routes>
     <Route path="/admin/login" element={<AdminLoginScreen />} />
     <Route path="/admin" element={<AdminDashboardScreen />} />
     <Route element={<AppLayout />}>
@@ -70,6 +81,8 @@ function App() {
       <Route path="/reset-password" element={<GuestOnly><PasswordRecoveryScreen reset /></GuestOnly>} />
       <Route path="/jobs" element={<GuestOnly redirectTo="/search?scope=jobs"><JobsScreen /></GuestOnly>} />
       <Route path="/jobs/:id" element={<GuestJobDetail />} />
+      <Route path="/freelancers/:id" element={<GuestFreelancerProfile />} />
+      <Route element={<RequireAuth />}>
       <Route path="/profile" element={<ProfileScreen />} />
       <Route path="/workspace-setup" element={<WorkspaceSetupScreen />} />
       <Route path="/messages" element={<MessagesScreen />} />
@@ -81,6 +94,7 @@ function App() {
       <Route path="/settings/verification" element={<SettingsScreen section="verification" />} />
       <Route path="/settings/notifications" element={<SettingsScreen section="notifications" />} />
       <Route path="/settings/credits" element={<SettingsScreen section="credits" />} />
+      <Route path="/settings/reliability" element={<SettingsScreen section="reliability" />} />
       <Route path="/search" element={<SearchResultsScreen />} />
       <Route path="/search/jobs/:id" element={<JobDetailScreen />} />
       <Route path="/search/freelancers/:id" element={<FreelancerPublicProfile />} />
@@ -89,8 +103,9 @@ function App() {
       <Route path="/dashboard" element={<DashboardScreen />} />
       <Route path="/work" element={<WorkManagementScreen />} />
       <Route path="/manage/jobs/:id/proposals" element={<ProposalManagerScreen />} />
+      </Route>
     </Route>
     <Route path="*" element={<Navigate to="/" replace />} />
-  </Routes></Suspense></BrowserRouter></ConfirmProvider></NotificationProvider></AuthProvider></PreferencesProvider>
+  </Routes></Suspense></AppErrorBoundary></BrowserRouter></ConfirmProvider></NotificationProvider></AuthProvider></PreferencesProvider>
 }
 export default App

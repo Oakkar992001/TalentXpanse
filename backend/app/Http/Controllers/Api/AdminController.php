@@ -12,6 +12,7 @@ use App\Models\Job;
 use App\Models\MarketplaceReport;
 use App\Models\MarketplacePaymentRecord;
 use App\Models\MarketplaceAdminAuditLog;
+use App\Models\MarketplaceReliabilityEvent;
 use App\Models\Proposal;
 use App\Models\User;
 use App\Services\MarketplaceNotificationService;
@@ -19,6 +20,8 @@ use App\Services\MarketplacePaymentSafetyService;
 use App\Services\MarketplaceEscrowService;
 use App\Services\MarketplacePaymentService;
 use App\Services\MarketplaceAdminAuditService;
+use App\Services\MarketplaceReliabilityService;
+use App\Services\ProposalCreditService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
@@ -40,6 +43,7 @@ class AdminController extends Controller
             'open_support_requests' => ContractSupportRequest::whereIn('status', ['open', 'under_review'])->count(),
             'open_reports' => MarketplaceReport::where('status', 'open')->count(),
             'payment_holds' => Contract::where('payment_hold_status', 'on_hold')->count(),
+            'pending_reliability_cases' => MarketplaceReliabilityEvent::where('status', 'pending')->count(),
             'audit_entries' => MarketplaceAdminAuditLog::count(),
         ]];
     }
@@ -78,12 +82,16 @@ class AdminController extends Controller
         return ['data' => $jobs];
     }
 
-    public function updateJob(Request $request, Job $job, MarketplaceAdminAuditService $audit)
+    public function updateJob(Request $request, Job $job, MarketplaceAdminAuditService $audit, ProposalCreditService $credits)
     {
         $this->ensureAdmin($request);
         $data = $request->validate(['status' => ['required', Rule::in(['open', 'paused', 'closed'])]]);
         abort_if(in_array($job->status, ['in_progress', 'completed'], true), 422, 'Contract jobs cannot be moderated from this action.');
+        $shouldRefundCredits = $data['status'] === 'closed' && $job->status !== 'closed';
         $job->update($data);
+        if ($shouldRefundCredits) {
+            $credits->refundForCancelledJob($job);
+        }
         $audit->log($request->user(), 'job.status_updated', $job, "Job status changed to {$job->status}.", ['status' => $job->status]);
 
         return ['data' => $job->fresh('client.clientProfile')];
@@ -99,12 +107,26 @@ class AdminController extends Controller
         return ['data' => $reports];
     }
 
-    public function updateReport(Request $request, MarketplaceReport $report, MarketplaceAdminAuditService $audit)
+    public function updateReport(Request $request, MarketplaceReport $report, MarketplaceAdminAuditService $audit, MarketplaceReliabilityService $reliability)
     {
         $this->ensureAdmin($request);
-        $data = $request->validate(['status' => ['required', Rule::in(['reviewed', 'resolved', 'dismissed'])]]);
-        $report->update($data + ['reviewed_by' => $request->user()->id, 'reviewed_at' => now()]);
-        $audit->log($request->user(), 'report.status_updated', $report, "Report status changed to {$report->status}.", ['status' => $report->status]);
+        $data = $request->validate([
+            'status' => ['required', Rule::in(['reviewed', 'resolved', 'dismissed'])],
+            'reliability_action' => ['nullable', Rule::in(['none', 'warning', 'serious_violation'])],
+            'reliability_note' => ['nullable', 'string', 'max:1000'],
+        ]);
+        abort_if(($data['reliability_action'] ?? 'none') !== 'none' && $data['status'] !== 'resolved', 422, 'Resolve the report before applying a reliability action.');
+        $report->update(['status' => $data['status'], 'reviewed_by' => $request->user()->id, 'reviewed_at' => now()]);
+        $metadata = ['status' => $report->status];
+        if (($data['reliability_action'] ?? 'none') !== 'none') {
+            [$user, $role] = $this->reliabilityTarget($report);
+            abort_unless($user && $role, 422, 'The reported account is no longer available for a reliability decision.');
+            $event = $reliability->recordReportAction($user, $role, $data['reliability_action'], $report->id, $data['reliability_note'] ?? $report->details, $request->user());
+            $reliability->sync($user, $role);
+            $metadata['reliability_event_id'] = $event->id;
+            $metadata['reliability_action'] = $data['reliability_action'];
+        }
+        $audit->log($request->user(), 'report.status_updated', $report, "Report status changed to {$report->status}.", $metadata);
 
         return ['data' => $report->fresh(['reporter', 'reviewer'])];
     }
@@ -180,7 +202,7 @@ class AdminController extends Controller
         ]];
     }
 
-    public function updateIdentityVerification(Request $request, User $user, MarketplaceNotificationService $notifications, MarketplaceAdminAuditService $audit)
+    public function updateIdentityVerification(Request $request, User $user, MarketplaceNotificationService $notifications, MarketplaceAdminAuditService $audit, MarketplaceReliabilityService $reliability)
     {
         $this->ensureAdmin($request);
         $data = $request->validate([
@@ -195,6 +217,9 @@ class AdminController extends Controller
             'identity_verified_at' => $data['status'] === 'verified' ? now() : null,
             'identity_verified_by' => $request->user()->id,
         ]);
+        if ($data['status'] === 'verified') {
+            $user->roles()->pluck('name')->filter(fn (string $role) => in_array($role, ['client', 'freelancer'], true))->each(fn (string $role) => $reliability->recordVerification($user, $role, 'identity', $user->id));
+        }
         $audit->log($request->user(), "identity_verification.{$data['status']}", $user, $data['note'] ?? "Identity verification {$data['status']}.", ['status' => $data['status']]);
         $notifications->send($user, 'identity_verification_updated', 'Identity verification updated', $data['status'] === 'verified' ? 'Your identity verification is complete.' : 'Your identity verification request needs attention. Review the note in Settings.', '/settings');
 
@@ -208,7 +233,7 @@ class AdminController extends Controller
         ])];
     }
 
-    public function updateCompanyVerification(Request $request, ClientProfile $clientProfile, MarketplaceNotificationService $notifications, MarketplaceAdminAuditService $audit)
+    public function updateCompanyVerification(Request $request, ClientProfile $clientProfile, MarketplaceNotificationService $notifications, MarketplaceAdminAuditService $audit, MarketplaceReliabilityService $reliability)
     {
         $this->ensureAdmin($request);
         $data = $request->validate([
@@ -223,6 +248,9 @@ class AdminController extends Controller
             'company_verified_at' => $data['status'] === 'verified' ? now() : null,
             'company_verified_by' => $request->user()->id,
         ]);
+        if ($data['status'] === 'verified') {
+            $reliability->recordVerification($clientProfile->user, 'client', 'company', $clientProfile->id);
+        }
         $audit->log($request->user(), "company_verification.{$data['status']}", $clientProfile, $data['note'] ?? "Company verification {$data['status']}.", ['status' => $data['status']]);
         $notifications->send($clientProfile->user_id, 'company_verification_updated', 'Company verification updated', $data['status'] === 'verified' ? 'Your company verification is complete.' : 'Your company verification request needs attention. Review the note in Settings.', '/settings');
 
@@ -263,9 +291,59 @@ class AdminController extends Controller
         return ['data' => $updated->load(['client', 'freelancer', 'paymentHoldHandler'])];
     }
 
+    public function reliability(Request $request)
+    {
+        $this->ensureAdmin($request);
+
+        return ['data' => [
+            'pending' => MarketplaceReliabilityEvent::query()->where('status', 'pending')->with(['user.roles'])->latest()->take(50)->get(),
+            'recent' => MarketplaceReliabilityEvent::query()->where('status', 'confirmed')->with(['user.roles', 'reviewer'])->latest()->take(50)->get(),
+            'metrics' => [
+                'pending' => MarketplaceReliabilityEvent::where('status', 'pending')->count(),
+                'reduced_reach' => \App\Models\MarketplaceReliabilityProfile::where('search_visibility', 'reduced')->count(),
+                'limited_reach' => \App\Models\MarketplaceReliabilityProfile::where('search_visibility', 'limited')->count(),
+            ],
+        ]];
+    }
+
+    public function updateReliabilityEvent(Request $request, MarketplaceReliabilityEvent $reliabilityEvent, MarketplaceReliabilityService $reliability, MarketplaceNotificationService $notifications, MarketplaceAdminAuditService $audit)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'status' => ['required', Rule::in(['confirmed', 'dismissed'])],
+            'resolution_note' => ['required', 'string', 'min:10', 'max:2000'],
+        ]);
+        abort_unless($reliabilityEvent->status === 'pending', 422, 'This reliability case has already been reviewed.');
+
+        $updated = $reliability->resolve($reliabilityEvent, $data['status'], $request->user(), $data['resolution_note']);
+        $audit->log($request->user(), "reliability_event.{$updated->status}", $updated, $data['resolution_note'], ['points' => $updated->points, 'event_type' => $updated->event_type]);
+        $notifications->send($updated->user, 'reliability_reviewed', 'Reliability review completed', $updated->status === 'confirmed' ? 'TalentXpanse completed a reliability review. Check Settings to understand your current marketplace status and recovery path.' : 'TalentXpanse reviewed and dismissed a reliability concern. Your marketplace reach was not changed.', '/settings/reliability');
+
+        return ['data' => $updated];
+    }
+
     private function ensureAdmin(Request $request): void
     {
         abort_unless($request->user()->hasRole('admin'), 403, 'Administrator access is required.');
+    }
+
+    private function reliabilityTarget(MarketplaceReport $report): array
+    {
+        if ($report->target_type === 'job') {
+            $job = Job::find($report->target_id);
+
+            return [$job?->client, 'client'];
+        }
+        if ($report->target_type === 'freelancer') {
+            $profile = FreelancerProfile::with('user')->find($report->target_id);
+
+            return [$profile?->user, 'freelancer'];
+        }
+
+        $message = ConversationMessage::with('conversation')->find($report->target_id);
+        $role = $message?->conversation?->client_id === $message?->sender_id ? 'client' : 'freelancer';
+
+        return [$message?->sender, $role];
     }
 
     private function targetPreview(MarketplaceReport $report): array

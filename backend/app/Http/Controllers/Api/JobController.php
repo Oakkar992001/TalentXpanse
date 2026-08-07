@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Job;
+use App\Services\ProposalCreditService;
 use App\Services\TrustSummaryService;
 use Illuminate\Http\Request;
 
@@ -50,12 +51,17 @@ class JobController extends Controller
         return response()->json(['data' => $job->load('client.clientProfile')], 201);
     }
 
-    public function update(Request $request, Job $job)
+    public function update(Request $request, Job $job, ProposalCreditService $credits)
     {
         abort_unless($job->client_id === $request->user()->id, 403, 'Only the job owner can update this job.');
         abort_if(in_array($job->status, ['in_progress', 'completed', 'cancelled'], true), 422, 'This job is managed through its project and cannot be edited.');
         $data = $this->validated($request, false);
+        $shouldRefundCredits = ($data['status'] ?? null) === 'closed' && $job->status !== 'closed';
         $job->update($data);
+
+        if ($shouldRefundCredits) {
+            $credits->refundForCancelledJob($job);
+        }
 
         return ['data' => $job->fresh(['client.clientProfile'])];
     }

@@ -6,12 +6,16 @@ import { useConfirmation } from '../contexts/ConfirmContext'
 import AdminPaymentSafetyPanel from '../components/AdminPaymentSafetyPanel'
 import AdminAuditTrail from '../components/AdminAuditTrail'
 import AdminVerificationPanel from '../components/AdminVerificationPanel'
+import AdminReliabilityPanel from '../components/AdminReliabilityPanel'
+import AdminReportActions from '../components/AdminReportActions'
 import '../admin.css'
 
 const label = (value) => String(value || '').replaceAll('_', ' ')
 
 function confirmationForAction(path, payload) {
   const status = payload?.status
+  if (path.startsWith('/admin/reliability-events/') && ['confirmed', 'dismissed'].includes(status)) return { title: `${status === 'confirmed' ? 'Confirm' : 'Dismiss'} this reliability concern?`, message: status === 'confirmed' ? 'This applies a time-limited, documented reach impact. Make sure the decision note records the evidence.' : 'This removes the pending concern without changing the member’s reach. The review note is retained in the audit trail.', confirmLabel: status === 'confirmed' ? 'Confirm concern' : 'Dismiss concern', tone: status === 'confirmed' ? 'danger' : undefined }
+  if (path.startsWith('/admin/reports/') && payload?.reliability_action && payload.reliability_action !== 'none') return { title: 'Resolve report with a reliability action?', message: 'This creates a documented, time-limited account-health action for the reported user. Confirm the evidence and note first.', confirmLabel: 'Resolve with action', tone: 'danger' }
   if (path.startsWith('/admin/users/') && status === 'suspended') return { title: 'Suspend this account?', message: 'The user will be signed out and unable to access TalentXpanse until an administrator restores the account.', confirmLabel: 'Suspend account', tone: 'danger' }
   if (path.startsWith('/admin/jobs/') && status === 'closed') return { title: 'Close this job post?', message: 'It will no longer be available for new proposals. This action is recorded in the audit trail.', confirmLabel: 'Close job', tone: 'danger' }
   if (path.startsWith('/admin/jobs/') && status === 'paused') return { title: 'Pause this job post?', message: 'New proposals will be blocked until the job is reopened or closed.', confirmLabel: 'Pause job' }
@@ -72,9 +76,10 @@ export function AdminDashboardScreen() {
   const [resolutionNotes, setResolutionNotes] = useState({})
   const [paymentData, setPaymentData] = useState(null)
   const [verificationData, setVerificationData] = useState(null)
+  const [reliabilityData, setReliabilityData] = useState(null)
   const [lastRefreshed, setLastRefreshed] = useState(null)
   const isAdmin = user?.roles?.includes('admin')
-  const endpoint = tab === 'users' ? '/admin/users' : tab === 'jobs' ? '/admin/jobs' : tab === 'support' ? '/admin/support-requests' : tab === 'payments' ? '/admin/payment-records' : tab === 'audit' ? '/admin/audit-logs' : tab === 'verifications' ? '/admin/verifications' : '/admin/reports'
+  const endpoint = tab === 'users' ? '/admin/users' : tab === 'jobs' ? '/admin/jobs' : tab === 'support' ? '/admin/support-requests' : tab === 'payments' ? '/admin/payment-records' : tab === 'audit' ? '/admin/audit-logs' : tab === 'verifications' ? '/admin/verifications' : tab === 'reliability' ? '/admin/reliability' : '/admin/reports'
 
   const load = useCallback(async () => {
     setError('')
@@ -86,6 +91,7 @@ export function AdminDashboardScreen() {
         const payload = responses[1].data.data
         if (tab === 'payments') setPaymentData(payload)
         else if (tab === 'verifications') setVerificationData(payload)
+        else if (tab === 'reliability') setReliabilityData(payload)
         else setItems(payload.data || [])
       }
       setLastRefreshed(new Date())
@@ -120,13 +126,13 @@ export function AdminDashboardScreen() {
 
   return <div className="admin-shell"><aside>
     <div className="admin-brand">Talent<span>Xpanse</span><small>Operations</small></div>
-    <nav>{[['overview', 'Overview'], ['reports', 'Reports'], ['support', 'Project support'], ['verifications', 'Verifications'], ['payments', 'Payment safety'], ['audit', 'Audit trail'], ['jobs', 'Jobs'], ['users', 'Users']].map(([value, title]) => <button key={value} className={tab === value ? 'active' : ''} onClick={() => setTab(value)}>{title}</button>)}</nav>
+    <nav>{[['overview', 'Overview'], ['reports', 'Reports'], ['support', 'Project support'], ['reliability', 'Reliability'], ['verifications', 'Verifications'], ['payments', 'Payment safety'], ['audit', 'Audit trail'], ['jobs', 'Jobs'], ['users', 'Users']].map(([value, title]) => <button key={value} className={tab === value ? 'active' : ''} onClick={() => setTab(value)}>{title}</button>)}</nav>
     <div className="admin-account"><b>{user.name}</b><small>{user.email}</small><button onClick={signOut}>Log out</button></div>
   </aside><main>
     <header><div><p className="eyebrow">Administrator console</p><h1>{tab === 'overview' ? 'Marketplace overview' : label(tab)}</h1></div><div className="admin-header-actions"><small>{lastRefreshed ? `Updated ${lastRefreshed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Loading current data'}</small><button className="button button-outline" onClick={load} disabled={busy}>Refresh</button><span className="admin-status">Platform monitoring</span></div></header>
     {error && <p className="form-notice">{error}</p>}
     {!dashboard ? <p className="admin-loading">Loading operational data…</p> : <>
-      {tab === 'overview' && <section className="admin-metrics">{[['Users', dashboard.users], ['Open jobs', dashboard.open_jobs], ['Proposals', dashboard.proposals], ['Active contracts', dashboard.active_contracts], ['Content reports', dashboard.open_reports], ['Project support', dashboard.open_support_requests], ['Payment holds', dashboard.payment_holds], ['Audit entries', dashboard.audit_entries], ['Suspended users', dashboard.suspended_users]].map(([name, value]) => <article key={name}><small>{name}</small><b>{value}</b></article>)}</section>}
+      {tab === 'overview' && <section className="admin-metrics">{[['Users', dashboard.users], ['Open jobs', dashboard.open_jobs], ['Proposals', dashboard.proposals], ['Active contracts', dashboard.active_contracts], ['Content reports', dashboard.open_reports], ['Project support', dashboard.open_support_requests], ['Reliability backlog', dashboard.pending_reliability_cases], ['Payment holds', dashboard.payment_holds], ['Audit entries', dashboard.audit_entries], ['Suspended users', dashboard.suspended_users]].map(([name, value]) => <article key={name}><small>{name}</small><b>{value}</b></article>)}</section>}
 
       {tab === 'reports' && <section className="admin-table"><p>Review the reported item before resolving the report. Account and content actions remain deliberate, separate decisions.</p>
         {items.length ? <table><thead><tr><th>Reported item</th><th>Reason</th><th>Reporter</th><th>Status</th><th>Action</th></tr></thead><tbody>{items.map((report) => <tr key={report.id}>
@@ -134,7 +140,7 @@ export function AdminDashboardScreen() {
           <td>{label(report.reason)}{report.details && <small>{report.details}</small>}</td>
           <td>{report.reporter?.name}<small>{report.reviewed_at ? `Reviewed by ${report.reviewer?.name || 'administrator'}` : 'Not reviewed yet'}</small></td>
           <td><span className={`admin-pill ${report.status}`}>{report.status}</span></td>
-          <td><div>{report.status === 'open' && <button disabled={busy === `/admin/reports/${report.id}`} onClick={() => action(`/admin/reports/${report.id}`, { status: 'reviewed' })}>Review</button>}{report.status === 'reviewed' && <button disabled={busy === `/admin/reports/${report.id}`} onClick={() => action(`/admin/reports/${report.id}`, { status: 'resolved' })}>Resolve</button>}{['open', 'reviewed'].includes(report.status) && <button disabled={busy === `/admin/reports/${report.id}`} onClick={() => action(`/admin/reports/${report.id}`, { status: 'dismissed' })}>Dismiss</button>}</div></td>
+          <td><AdminReportActions report={report} busy={busy} onAction={action} /></td>
         </tr>)}</tbody></table> : <p className="admin-empty">No reports need review.</p>}
       </section>}
 
@@ -151,6 +157,8 @@ export function AdminDashboardScreen() {
       {tab === 'payments' && <AdminPaymentSafetyPanel data={paymentData} busy={busy} onAction={action} />}
 
       {tab === 'verifications' && <AdminVerificationPanel data={verificationData} busy={busy} onAction={action} />}
+
+      {tab === 'reliability' && <AdminReliabilityPanel data={reliabilityData} busy={busy} onAction={action} />}
 
       {tab === 'audit' && <AdminAuditTrail entries={items} />}
 

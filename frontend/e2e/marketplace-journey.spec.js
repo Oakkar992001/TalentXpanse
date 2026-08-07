@@ -54,7 +54,7 @@ test('client and freelancer complete the marketplace journey', async ({ browser 
     await register(freelancerPage, freelancerDetails)
     await freelancerPage.goto(`/search?scope=jobs&q=${encodeURIComponent(jobTitle)}`)
     const jobCard = freelancerPage.locator('.discovery-result-card').filter({ hasText: jobTitle })
-    await expect(jobCard).toBeVisible()
+    await expect(jobCard).toBeVisible({ timeout: 30_000 })
     await jobCard.click()
     await expect(freelancerPage).toHaveURL(new RegExp(`/search/jobs/${jobId}$`))
     await freelancerPage.getByLabel('Your proposal').fill('I can build this Laravel and React marketplace workflow with responsive screens, practical API validation, clear milestone delivery notes, and a reliable handover for your team.')

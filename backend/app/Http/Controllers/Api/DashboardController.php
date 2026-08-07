@@ -5,11 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Job;
 use App\Services\ProposalCreditService;
+use App\Services\MarketplaceReliabilityService;
 use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
-    public function show(Request $request, ProposalCreditService $credits)
+    public function show(Request $request, ProposalCreditService $credits, MarketplaceReliabilityService $reliability)
     {
         $user = $request->user();
         $role = $request->query('role', $user->roles()->value('name'));
@@ -27,6 +28,7 @@ class DashboardController extends Controller
                 ],
                 'jobs' => $jobs->withCount('proposals')->latest()->take(6)->get(),
                 'recent_proposals' => $user->clientJobs()->with(['proposals' => fn ($q) => $q->with('freelancer.freelancerProfile')->latest()->take(5)])->get()->pluck('proposals')->flatten()->sortByDesc('created_at')->take(5)->values(),
+                'reliability' => $reliability->summaryFor($user, 'client'),
             ]];
         }
 
@@ -43,6 +45,7 @@ class DashboardController extends Controller
             'proposal_credits' => $credits->summaryFor($user),
             'proposals' => $proposals->with('job')->latest()->take(6)->get(),
             'recommended_jobs' => $recommendations,
+            'reliability' => $reliability->summaryFor($user, 'freelancer'),
         ]];
     }
 }

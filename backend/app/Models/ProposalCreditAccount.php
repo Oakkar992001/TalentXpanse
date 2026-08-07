@@ -9,11 +9,14 @@ class ProposalCreditAccount extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['user_id', 'balance', 'last_monthly_grant_at'];
+    protected $fillable = ['user_id', 'balance', 'membership_tier', 'membership_expires_at', 'last_monthly_grant_at'];
 
     protected function casts(): array
     {
-        return ['last_monthly_grant_at' => 'date'];
+        return [
+            'last_monthly_grant_at' => 'date',
+            'membership_expires_at' => 'date',
+        ];
     }
 
     public function user()

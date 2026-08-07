@@ -10,8 +10,11 @@ use App\Models\Conversation;
 use App\Models\FreelancerResume;
 use App\Models\Job;
 use App\Models\MarketplaceNotification;
+use App\Models\MarketplaceReliabilityEvent;
 use App\Models\PortfolioItem;
 use App\Models\Proposal;
+use App\Models\ProposalCreditAccount;
+use App\Models\ProposalCreditGrant;
 use App\Models\ProposalOffer;
 use App\Models\Role;
 use App\Models\User;
@@ -19,6 +22,7 @@ use App\Notifications\TalentXpanseResetPassword;
 use App\Notifications\TalentXpanseVerifyEmail;
 use App\Services\MarketplaceEscrowService;
 use App\Services\MarketplaceNotificationService;
+use App\Services\ProposalCreditService;
 use Illuminate\Broadcasting\BroadcastManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -29,6 +33,7 @@ use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password as PasswordBroker;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Carbon;
 use Laravel\Sanctum\Sanctum;
 use LogicException;
 use Tests\TestCase;
@@ -36,6 +41,135 @@ use Tests\TestCase;
 class MarketplaceApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_free_credits_expire_after_sixty_days_and_never_roll_over_above_forty(): void
+    {
+        $freelancer = User::factory()->create();
+        $freelancer->roles()->attach(Role::firstOrCreate(['name' => 'freelancer']));
+
+        $this->travelTo(Carbon::parse('2026-01-10 10:00:00'));
+        $this->actingAs($freelancer, 'sanctum')->getJson('/api/proposal-credits')
+            ->assertOk()
+            ->assertJsonPath('data.balance', 20)
+            ->assertJsonPath('data.balance_cap', 40)
+            ->assertJsonPath('data.credit_expiry_days', 60);
+
+        $this->travelTo(Carbon::parse('2026-02-10 10:00:00'));
+        $this->actingAs($freelancer, 'sanctum')->getJson('/api/proposal-credits')
+            ->assertOk()
+            ->assertJsonPath('data.balance', 40);
+
+        $this->travelTo(Carbon::parse('2026-03-05 10:00:00'));
+        $this->actingAs($freelancer, 'sanctum')->getJson('/api/proposal-credits')
+            ->assertOk()
+            ->assertJsonPath('data.balance', 40);
+
+        $this->travelTo(Carbon::parse('2026-03-12 10:00:00'));
+        $this->actingAs($freelancer, 'sanctum')->getJson('/api/proposal-credits')
+            ->assertOk()
+            ->assertJsonPath('data.balance', 40);
+
+        $this->assertDatabaseHas('proposal_credit_transactions', [
+            'user_id' => $freelancer->id,
+            'type' => 'credit_expired',
+            'amount' => -20,
+        ]);
+        $this->travelBack();
+    }
+
+    public function test_proposals_spend_the_soonest_expiring_credits_first(): void
+    {
+        $freelancer = User::factory()->create();
+        $freelancer->roles()->attach(Role::firstOrCreate(['name' => 'freelancer']));
+        $client = User::factory()->create();
+        $job = Job::create([
+            'client_id' => $client->id,
+            'title' => 'Build a high-value customer portal',
+            'description' => 'Build a complete customer portal with dashboards, reliable account access, and a documented delivery handover.',
+            'category' => 'Development & IT',
+            'budget_min' => 500000,
+            'budget_max' => 600000,
+            'status' => 'open',
+        ]);
+
+        $this->travelTo(Carbon::parse('2026-01-10 10:00:00'));
+        app(ProposalCreditService::class)->summaryFor($freelancer);
+        $this->travelTo(Carbon::parse('2026-02-10 10:00:00'));
+        app(ProposalCreditService::class)->summaryFor($freelancer);
+
+        app(ProposalCreditService::class)->deductForProposal($freelancer, $job);
+
+        $grants = ProposalCreditGrant::query()
+            ->where('user_id', $freelancer->id)
+            ->where('source', 'free_monthly')
+            ->orderBy('granted_at')
+            ->get();
+        $this->assertSame(16, $grants->first()->remaining_amount);
+        $this->assertSame(20, $grants->last()->remaining_amount);
+        $this->travelBack();
+    }
+
+    public function test_client_closing_an_unhired_job_returns_its_proposal_credits_once(): void
+    {
+        $client = User::factory()->create();
+        $freelancer = User::factory()->create();
+        $client->roles()->attach(Role::firstOrCreate(['name' => 'client']));
+        $freelancer->roles()->attach(Role::firstOrCreate(['name' => 'freelancer']));
+        $job = Job::create([
+            'client_id' => $client->id,
+            'title' => 'Build a responsive member dashboard',
+            'description' => 'Build a responsive member dashboard with practical reporting, polished navigation, and maintainable Laravel code.',
+            'category' => 'Development & IT',
+            'budget_min' => 200000,
+            'budget_max' => 300000,
+            'status' => 'open',
+        ]);
+        $proposal = Proposal::create([
+            'job_id' => $job->id,
+            'freelancer_id' => $freelancer->id,
+            'cover_letter' => 'I can deliver the responsive dashboard with a careful project plan, clear progress updates, and documented handover notes.',
+            'bid_amount' => 250000,
+            'delivery_days' => 14,
+            'status' => 'submitted',
+            'credit_cost' => 2,
+        ]);
+
+        app(ProposalCreditService::class)->deductForProposal($freelancer, $job, $proposal);
+        $this->assertDatabaseHas('proposal_credit_accounts', ['user_id' => $freelancer->id, 'balance' => 18]);
+
+        $this->actingAs($client, 'sanctum')->patchJson("/api/jobs/{$job->id}", ['status' => 'closed'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'closed');
+        $this->actingAs($client, 'sanctum')->patchJson("/api/jobs/{$job->id}", ['status' => 'closed'])->assertOk();
+
+        $this->assertDatabaseHas('proposal_credit_grants', [
+            'proposal_id' => $proposal->id,
+            'source' => 'proposal_refund',
+            'remaining_amount' => 2,
+        ]);
+        $this->assertDatabaseHas('proposal_credit_accounts', ['user_id' => $freelancer->id, 'balance' => 20]);
+        $this->assertDatabaseCount('proposal_credit_grants', 2);
+    }
+
+    public function test_premium_credit_policy_is_ready_for_a_verified_membership_event(): void
+    {
+        $freelancer = User::factory()->create();
+        ProposalCreditAccount::create([
+            'user_id' => $freelancer->id,
+            'membership_tier' => 'premium',
+            'membership_expires_at' => Carbon::parse('2026-12-31'),
+        ]);
+
+        $this->travelTo(Carbon::parse('2026-01-10 10:00:00'));
+        $summary = app(ProposalCreditService::class)->summaryFor($freelancer);
+
+        $this->assertSame('premium', $summary['membership_tier']);
+        $this->assertSame(60, $summary['monthly_allowance']);
+        $this->assertSame(180, $summary['balance_cap']);
+        $this->assertSame(180, $summary['credit_expiry_days']);
+        $this->assertSame(60, $summary['balance']);
+        $this->travelBack();
+    }
 
     public function test_a_user_can_register_with_a_client_role_and_post_a_job(): void
     {
@@ -622,6 +756,7 @@ class MarketplaceApiTest extends TestCase
         $client->roles()->syncWithoutDetaching([$clientRole->id]);
         $this->actingAs($freelancer, 'sanctum')->getJson('/api/freelancer-profile')->assertOk()->assertJsonPath('data.trust_summary.average_rating', 5)->assertJsonPath('data.trust_summary.completed_projects_count', 1);
         $this->actingAs($client, 'sanctum')->getJson('/api/client-profile')->assertOk()->assertJsonPath('data.trust_summary.review_count', 1)->assertJsonPath('data.trust_summary.completed_projects.0.title', 'Create a responsive product dashboard');
+        $this->actingAs($freelancer, 'sanctum')->getJson('/api/reliability?role=freelancer')->assertOk()->assertJsonPath('data.freelancer.score', 56)->assertJsonPath('data.freelancer.tier', 'building');
     }
 
     public function test_project_participants_can_open_a_support_request_for_an_active_contract(): void
@@ -1082,5 +1217,69 @@ class MarketplaceApiTest extends TestCase
         $secondPath = FreelancerResume::where('user_id', $freelancer->id)->value('storage_path');
         Storage::disk('local')->assertMissing($firstPath);
         Storage::disk('local')->assertExists($secondPath);
+    }
+
+    public function test_a_cancellation_concern_stays_neutral_until_an_administrator_confirms_it(): void
+    {
+        $client = User::factory()->create(['active_role' => 'client']);
+        $freelancer = User::factory()->create(['active_role' => 'freelancer']);
+        $admin = User::factory()->create(['active_role' => 'admin']);
+        $client->roles()->attach(Role::firstOrCreate(['name' => 'client']));
+        $freelancer->roles()->attach(Role::firstOrCreate(['name' => 'freelancer']));
+        $admin->roles()->attach(Role::firstOrCreate(['name' => 'admin']));
+        $job = Job::create([
+            'client_id' => $client->id,
+            'title' => 'Build a reliable customer portal',
+            'description' => 'Build a customer portal with clear milestones, responsive pages, and maintainable delivery documentation.',
+            'category' => 'Development & IT',
+            'budget_min' => 250000,
+            'budget_max' => 350000,
+            'status' => 'in_progress',
+        ]);
+        $proposal = Proposal::create([
+            'job_id' => $job->id,
+            'freelancer_id' => $freelancer->id,
+            'cover_letter' => 'I will provide clear status updates, structured delivery notes, and a careful handover for this customer portal.',
+            'bid_amount' => 300000,
+            'delivery_days' => 21,
+            'status' => 'hired',
+        ]);
+        $contract = Contract::create([
+            'job_id' => $job->id,
+            'proposal_id' => $proposal->id,
+            'client_id' => $client->id,
+            'freelancer_id' => $freelancer->id,
+            'title' => $job->title,
+            'scope' => $job->description,
+            'agreed_amount' => 300000,
+            'status' => 'active',
+            'started_at' => now(),
+        ]);
+
+        $this->actingAs($client, 'sanctum')->postJson("/api/contracts/{$contract->id}/close", [
+            'reason_code' => 'freelancer_no_show',
+            'reason' => 'The freelancer has not responded to the agreed project check-ins or provided a workable delivery plan.',
+        ])->assertOk()->assertJsonPath('data.status', 'cancelled');
+
+        $event = MarketplaceReliabilityEvent::where('user_id', $freelancer->id)->firstOrFail();
+        $this->assertSame('pending', $event->status);
+        $this->actingAs($freelancer, 'sanctum')->getJson('/api/reliability?role=freelancer')
+            ->assertOk()
+            ->assertJsonPath('data.freelancer.score', 50)
+            ->assertJsonPath('data.freelancer.search_visibility', 'standard')
+            ->assertJsonPath('data.freelancer.recent_events.0.status', 'pending');
+
+        Sanctum::actingAs($admin, ['admin']);
+        $this->getJson('/api/admin/reliability')->assertOk()->assertJsonPath('data.metrics.pending', 1);
+        $this->patchJson("/api/admin/reliability-events/{$event->id}", [
+            'status' => 'confirmed',
+            'resolution_note' => 'The project record and communication history support a confirmed no-show concern.',
+        ])->assertOk()->assertJsonPath('data.status', 'confirmed');
+
+        $this->actingAs($freelancer, 'sanctum')->getJson('/api/reliability?role=freelancer')
+            ->assertOk()
+            ->assertJsonPath('data.freelancer.score', 42)
+            ->assertJsonPath('data.freelancer.search_visibility', 'reduced')
+            ->assertJsonPath('data.freelancer.recent_events.0.resolution_note', 'The project record and communication history support a confirmed no-show concern.');
     }
 }
