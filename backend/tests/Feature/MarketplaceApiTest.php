@@ -45,6 +45,42 @@ class MarketplaceApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_open_beta_bootstrap_creates_an_administrator_without_resetting_an_existing_password(): void
+    {
+        putenv('OPEN_BETA_ADMIN_NAME=Beta Administrator');
+        putenv('OPEN_BETA_ADMIN_EMAIL=beta-admin@talentxpanse.test');
+        putenv('OPEN_BETA_ADMIN_PASSWORD=initial-admin-password');
+
+        try {
+            $this->artisan('marketplace:bootstrap-admin')->assertSuccessful();
+
+            $administrator = User::where('email', 'beta-admin@talentxpanse.test')->firstOrFail();
+            $this->assertSame('Beta Administrator', $administrator->name);
+            $this->assertTrue($administrator->hasRole('admin'));
+            $this->assertTrue(Hash::check('initial-admin-password', $administrator->password));
+
+            putenv('OPEN_BETA_ADMIN_PASSWORD=a-different-admin-password');
+            $this->artisan('marketplace:bootstrap-admin')->assertSuccessful();
+
+            $this->assertSame(1, User::where('email', 'beta-admin@talentxpanse.test')->count());
+            $this->assertTrue(Hash::check('initial-admin-password', $administrator->fresh()->password));
+        } finally {
+            putenv('OPEN_BETA_ADMIN_NAME');
+            putenv('OPEN_BETA_ADMIN_EMAIL');
+            putenv('OPEN_BETA_ADMIN_PASSWORD');
+        }
+    }
+
+    public function test_api_allows_the_configured_open_beta_frontend_origin(): void
+    {
+        config(['cors.allowed_origins' => ['https://talentxpanse-beta.pages.dev']]);
+
+        $this->withHeader('Origin', 'https://talentxpanse-beta.pages.dev')
+            ->getJson('/api/health')
+            ->assertOk()
+            ->assertHeader('Access-Control-Allow-Origin', 'https://talentxpanse-beta.pages.dev');
+    }
+
     public function test_api_validation_uses_myanmar_when_requested(): void
     {
         $this->withHeader('Accept-Language', 'my-MM,my;q=0.9')

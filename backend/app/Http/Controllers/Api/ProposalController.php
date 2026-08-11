@@ -12,6 +12,7 @@ use App\Services\MarketplaceNotificationService;
 use App\Services\MarketplacePaymentService;
 use App\Services\ProposalCreditService;
 use App\Services\TrustSummaryService;
+use App\Support\MarketplaceStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -71,13 +72,15 @@ class ProposalController extends Controller
                 abort_if(($data['attach_resume'] ?? false) && ! $resume && ! $uploadedResume, 422, 'Upload a PDF CV before attaching it to a proposal.');
 
                 if ($uploadedResume) {
-                    $proposalResumePath = $uploadedResume->store("proposal-resumes/{$request->user()->id}", 'local');
+                    $proposalResumePath = $uploadedResume->store("proposal-resumes/{$request->user()->id}", MarketplaceStorage::privateDisk());
                 } elseif ($resume) {
-                    $sourceDisk = Storage::disk('local')->exists($resume->storage_path) ? 'local' : 'public';
+                    $sourceDisk = Storage::disk(MarketplaceStorage::privateDisk())->exists($resume->storage_path)
+                        ? MarketplaceStorage::privateDisk()
+                        : MarketplaceStorage::publicDisk();
                     abort_unless(Storage::disk($sourceDisk)->exists($resume->storage_path), 422, 'Your saved CV is unavailable. Upload it again before attaching it to a proposal.');
 
                     $proposalResumePath = "proposal-resumes/{$request->user()->id}/".Str::uuid().'.pdf';
-                    Storage::disk('local')->put($proposalResumePath, Storage::disk($sourceDisk)->get($resume->storage_path));
+                    Storage::disk(MarketplaceStorage::privateDisk())->put($proposalResumePath, Storage::disk($sourceDisk)->get($resume->storage_path));
                 }
 
                 $proposal = Proposal::create(Arr::only($data, ['cover_letter', 'bid_amount', 'delivery_days']) + [
@@ -100,7 +103,7 @@ class ProposalController extends Controller
             });
         } catch (Throwable $exception) {
             if ($proposalResumePath) {
-                Storage::disk('local')->delete($proposalResumePath);
+                Storage::disk(MarketplaceStorage::privateDisk())->delete($proposalResumePath);
             }
 
             throw $exception;

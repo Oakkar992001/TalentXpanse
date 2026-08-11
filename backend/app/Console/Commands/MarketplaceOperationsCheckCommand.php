@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\MarketplacePaymentService;
+use App\Support\MarketplaceStorage;
 use App\Services\OperationalReadinessService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
@@ -57,7 +58,9 @@ class MarketplaceOperationsCheckCommand extends Command
             $this->check('Persistent sessions selected', ! in_array(config('session.driver'), ['array', 'null'], true)),
             $this->check('Secure session cookie enabled', (bool) config('session.secure')),
             $this->check('Asynchronous queue selected', config('queue.default') !== 'sync'),
-            $this->check('Email delivery configured', ! in_array($mailMailer, ['array', 'log'], true) && filled(config('mail.mailers.smtp.host')) && filled(config('mail.from.address'))),
+            $this->check('Email delivery configured', $this->mailConfigured($mailMailer) && filled(config('mail.from.address'))),
+            $this->check('Private marketplace storage configured', $this->storageConfigured(MarketplaceStorage::privateDisk())),
+            $this->check('Public profile storage configured', $this->storageConfigured(MarketplaceStorage::publicDisk())),
             $this->check('Reverb credentials configured', ! $reverbEnabled || (filled($reverbApplication['app_id'] ?? null) && filled($reverbApplication['key'] ?? null) && filled($reverbApplication['secret'] ?? null))),
             $this->check('Payment activation is safe', ! config('marketplace_payments.enabled') || $payments->gatewayConfigured()),
         ];
@@ -66,5 +69,39 @@ class MarketplaceOperationsCheckCommand extends Command
     private function check(string $name, bool $passes): array
     {
         return ['name' => $name, 'status' => $passes ? 'ok' : 'degraded'];
+    }
+
+    private function mailConfigured(string $mailer): bool
+    {
+        return match ($mailer) {
+            'smtp' => filled(config('mail.mailers.smtp.host')),
+            'resend' => filled(config('services.resend.key')),
+            default => ! in_array($mailer, ['array', 'log'], true),
+        };
+    }
+
+    private function objectStorageConfigured(string $disk): bool
+    {
+        $config = config("filesystems.disks.{$disk}");
+
+        return is_array($config)
+            && $config['driver'] === 's3'
+            && filled($config['key'] ?? null)
+            && filled($config['secret'] ?? null)
+            && filled($config['bucket'] ?? null)
+            && filled($config['endpoint'] ?? null);
+    }
+
+    private function storageConfigured(string $disk): bool
+    {
+        if (config('marketplace_storage.external_storage_required')) {
+            return $this->objectStorageConfigured($disk);
+        }
+
+        $config = config("filesystems.disks.{$disk}");
+
+        return is_array($config)
+            && filled($config['driver'] ?? null)
+            && ($config['driver'] !== 'local' || filled($config['root'] ?? null));
     }
 }

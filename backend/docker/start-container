@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+: "${PORT:=10000}"
+envsubst '${PORT}' < /etc/nginx/http.d/default.conf.template > /etc/nginx/http.d/default.conf
+
+php artisan migrate --force
+
+if [ -n "${OPEN_BETA_ADMIN_EMAIL:-}" ] || [ -n "${OPEN_BETA_ADMIN_PASSWORD:-}" ]; then
+  php artisan marketplace:bootstrap-admin
+fi
+
+php artisan config:cache
+php artisan route:cache
+
+exec /usr/bin/supervisord -c /etc/supervisord.conf

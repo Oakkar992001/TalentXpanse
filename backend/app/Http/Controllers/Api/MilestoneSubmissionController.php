@@ -10,6 +10,7 @@ use App\Models\ConversationEvent;
 use App\Models\MilestoneSubmissionFile;
 use App\Services\MarketplaceNotificationService;
 use App\Services\MilestoneSubmissionService;
+use App\Support\MarketplaceStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -40,9 +41,10 @@ class MilestoneSubmissionController extends Controller
         $file->load('submission.milestone.contract');
         $contract = $file->submission?->milestone?->contract;
         abort_unless($contract && in_array($request->user()->id, [$contract->client_id, $contract->freelancer_id], true), 403, 'You are not part of this project.');
-        abort_unless(Storage::disk('local')->exists($file->storage_path), 404, 'This delivery file is no longer available.');
+        $disk = Storage::disk(MarketplaceStorage::privateDisk());
+        abort_unless($disk->exists($file->storage_path), 404, 'This delivery file is no longer available.');
 
-        return Storage::disk('local')->download($file->storage_path, $file->original_name);
+        return $disk->download($file->storage_path, $file->original_name);
     }
 
     private function event(Contract $contract, string $body): void

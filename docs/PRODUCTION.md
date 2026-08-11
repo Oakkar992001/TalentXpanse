@@ -1,5 +1,7 @@
 # TalentXpanse production runbook
 
+For the current free public test deployment, use [OPEN_BETA.md](OPEN_BETA.md). This runbook remains the path for a managed production environment with a custom domain, dedicated workers, WebSockets, backups, and a reviewed payment integration.
+
 ## What is ready
 
 - Laravel queues use the database connection and queue jobs after database commits when `QUEUE_AFTER_COMMIT=true`.

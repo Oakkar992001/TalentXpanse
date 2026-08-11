@@ -2,6 +2,8 @@
 
 Day 3 project foundation for a Myanmar freelance marketplace.
 
+For the free public test deployment, follow [the open-beta runbook](OPEN_BETA.md). It keeps payments disabled, uses persistent external storage for uploads, and provisions the separate admin login safely.
+
 ## Run locally
 
 1. Create a MySQL database named `freelance_marketplace`.

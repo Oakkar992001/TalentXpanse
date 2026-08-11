@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Notifications\TalentXpanseResetPassword;
 use App\Notifications\TalentXpanseVerifyEmail;
+use App\Support\MarketplaceStorage;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -208,6 +209,6 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function getProfilePhotoUrlAttribute(): ?string
     {
-        return $this->profile_photo_path ? url(Storage::disk('public')->url($this->profile_photo_path)) : null;
+        return $this->profile_photo_path ? url(Storage::disk(MarketplaceStorage::publicDisk())->url($this->profile_photo_path)) : null;
     }
 }

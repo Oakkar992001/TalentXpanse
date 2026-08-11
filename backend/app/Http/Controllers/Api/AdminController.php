@@ -23,6 +23,7 @@ use App\Services\MarketplacePaymentSafetyService;
 use App\Services\MarketplacePaymentService;
 use App\Services\MarketplaceReliabilityService;
 use App\Services\ProposalCreditService;
+use App\Support\MarketplaceStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -250,12 +251,13 @@ class AdminController extends Controller
         abort_unless($identityVerificationSubmission->status === 'pending' && ! $identityVerificationSubmission->documents_purged_at, 404, 'This identity document is no longer available.');
 
         $path = $side === 'front' ? $identityVerificationSubmission->nrc_front_path : $identityVerificationSubmission->nrc_back_path;
-        abort_unless($path && Storage::disk('local')->exists($path), 404, 'This identity document is no longer available.');
+        $disk = Storage::disk(MarketplaceStorage::privateDisk());
+        abort_unless($path && $disk->exists($path), 404, 'This identity document is no longer available.');
 
         $extension = pathinfo($path, PATHINFO_EXTENSION) ?: 'jpg';
         $audit->log($request->user(), 'identity_verification.document_accessed', $identityVerificationSubmission, "Opened identity document {$side} for review.", ['side' => $side]);
 
-        return Storage::disk('local')->response($path, "identity-document-{$side}.{$extension}", [
+        return $disk->response($path, "identity-document-{$side}.{$extension}", [
             'Cache-Control' => 'no-store, private',
             'X-Content-Type-Options' => 'nosniff',
         ]);
@@ -357,9 +359,10 @@ class AdminController extends Controller
 
     private function purgeIdentityDocuments(IdentityVerificationSubmission $submission): void
     {
+        $disk = Storage::disk(MarketplaceStorage::privateDisk());
         foreach ([$submission->nrc_front_path, $submission->nrc_back_path] as $path) {
-            if ($path && Storage::disk('local')->exists($path)) {
-                Storage::disk('local')->delete($path);
+            if ($path && $disk->exists($path)) {
+                $disk->delete($path);
             }
         }
 

@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Support\MarketplaceStorage;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Throwable;
 
 class OperationalReadinessService
@@ -57,7 +59,11 @@ class OperationalReadinessService
 
     private function checkStorage(): string
     {
-        return is_writable(storage_path()) ? 'ok' : 'degraded';
+        return $this->component(function () {
+            foreach ([MarketplaceStorage::privateDisk(), MarketplaceStorage::publicDisk()] as $diskName) {
+                Storage::disk($diskName)->exists('talentxpanse-readiness-probe');
+            }
+        });
     }
 
     private function component(callable $callback): string

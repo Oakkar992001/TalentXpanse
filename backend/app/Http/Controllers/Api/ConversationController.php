@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Conversation;
 use App\Models\ConversationEvent;
 use App\Models\ConversationMessageFile;
+use App\Support\MarketplaceStorage;
 use App\Models\Proposal;
 use App\Services\ConversationMessageService;
 use App\Services\MarketplaceNotificationService;
@@ -86,9 +87,10 @@ class ConversationController extends Controller
         $file->load('message.conversation');
         $conversation = $file->message?->conversation;
         abort_unless($conversation && $conversation->involves($request->user()), 403, 'You are not part of this conversation.');
-        abort_unless(Storage::disk('local')->exists($file->storage_path), 404, 'This message file is no longer available.');
+        $disk = Storage::disk(MarketplaceStorage::privateDisk());
+        abort_unless($disk->exists($file->storage_path), 404, 'This message file is no longer available.');
 
-        return Storage::disk('local')->download($file->storage_path, $file->original_name);
+        return $disk->download($file->storage_path, $file->original_name);
     }
 
     public function summary(Request $request)

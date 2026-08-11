@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\IdentityVerificationSubmission;
+use App\Support\MarketplaceStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -29,8 +30,8 @@ class VerificationRequestController extends Controller
             $paths = [];
 
             try {
-                $paths['front'] = $request->file('nrc_front')->store("identity-documents/{$user->id}", 'local');
-                $paths['back'] = $request->file('nrc_back')->store("identity-documents/{$user->id}", 'local');
+                $paths['front'] = $request->file('nrc_front')->store("identity-documents/{$user->id}", MarketplaceStorage::privateDisk());
+                $paths['back'] = $request->file('nrc_back')->store("identity-documents/{$user->id}", MarketplaceStorage::privateDisk());
 
                 $submission = DB::transaction(function () use ($user, $data, $paths) {
                     $submission = IdentityVerificationSubmission::create([
@@ -54,7 +55,7 @@ class VerificationRequestController extends Controller
                 });
             } catch (Throwable $exception) {
                 foreach ($paths as $path) {
-                    Storage::disk('local')->delete($path);
+                    Storage::disk(MarketplaceStorage::privateDisk())->delete($path);
                 }
 
                 throw $exception;

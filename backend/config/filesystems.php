@@ -60,6 +60,31 @@ return [
             'report' => false,
         ],
 
+        'marketplace_private' => [
+            'driver' => 's3',
+            'key' => env('MARKETPLACE_PRIVATE_AWS_ACCESS_KEY_ID'),
+            'secret' => env('MARKETPLACE_PRIVATE_AWS_SECRET_ACCESS_KEY'),
+            'region' => env('MARKETPLACE_PRIVATE_AWS_DEFAULT_REGION', 'auto'),
+            'bucket' => env('MARKETPLACE_PRIVATE_AWS_BUCKET'),
+            'endpoint' => env('MARKETPLACE_PRIVATE_AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('MARKETPLACE_PRIVATE_AWS_USE_PATH_STYLE_ENDPOINT', true),
+            'throw' => false,
+            'report' => false,
+        ],
+
+        'marketplace_public' => [
+            'driver' => 's3',
+            'key' => env('MARKETPLACE_PUBLIC_AWS_ACCESS_KEY_ID'),
+            'secret' => env('MARKETPLACE_PUBLIC_AWS_SECRET_ACCESS_KEY'),
+            'region' => env('MARKETPLACE_PUBLIC_AWS_DEFAULT_REGION', 'auto'),
+            'bucket' => env('MARKETPLACE_PUBLIC_AWS_BUCKET'),
+            'url' => env('MARKETPLACE_PUBLIC_AWS_URL'),
+            'endpoint' => env('MARKETPLACE_PUBLIC_AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('MARKETPLACE_PUBLIC_AWS_USE_PATH_STYLE_ENDPOINT', true),
+            'throw' => false,
+            'report' => false,
+        ],
+
     ],
 
     /*

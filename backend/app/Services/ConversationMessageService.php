@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Conversation;
 use App\Models\ConversationMessage;
 use App\Models\User;
+use App\Support\MarketplaceStorage;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -28,7 +29,7 @@ class ConversationMessageService
                     /** @var UploadedFile $file */
                     $extension = $file->extension() ?: 'file';
                     $path = "conversation-files/{$conversation->id}/".Str::uuid().".{$extension}";
-                    Storage::disk('local')->putFileAs(dirname($path), $file, basename($path));
+                    Storage::disk(MarketplaceStorage::privateDisk())->putFileAs(dirname($path), $file, basename($path));
                     $storedPaths[] = $path;
                     $message->files()->create([
                         'uploaded_by' => $sender->id,
@@ -45,7 +46,7 @@ class ConversationMessageService
             });
         } catch (Throwable $exception) {
             foreach ($storedPaths as $path) {
-                Storage::disk('local')->delete($path);
+                Storage::disk(MarketplaceStorage::privateDisk())->delete($path);
             }
 
             throw $exception;

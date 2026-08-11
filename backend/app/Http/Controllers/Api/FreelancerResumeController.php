@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\FreelancerResume;
 use App\Models\Proposal;
+use App\Support\MarketplaceStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -16,7 +17,7 @@ class FreelancerResumeController extends Controller
         $request->validate(['resume' => ['required', 'file', 'mimes:pdf', 'max:10240']]);
         $file = $request->file('resume');
         $existing = FreelancerResume::where('user_id', $request->user()->id)->first();
-        $path = $file->store("resumes/{$request->user()->id}", 'local');
+        $path = $file->store("resumes/{$request->user()->id}", MarketplaceStorage::privateDisk());
         $resume = FreelancerResume::updateOrCreate(['user_id' => $request->user()->id], [
             'original_name' => $file->getClientOriginalName(),
             'storage_path' => $path,
@@ -52,7 +53,9 @@ class FreelancerResumeController extends Controller
         abort_unless($isOwner || $isClient, 403);
         abort_unless($proposal->resume_path, 404, 'This proposal does not include a CV.');
 
-        $disk = Storage::disk('local')->exists($proposal->resume_path) ? 'local' : 'public';
+        $disk = Storage::disk(MarketplaceStorage::privateDisk())->exists($proposal->resume_path)
+            ? MarketplaceStorage::privateDisk()
+            : MarketplaceStorage::publicDisk();
         abort_unless(Storage::disk($disk)->exists($proposal->resume_path), 404, 'This CV is no longer available.');
 
         return Storage::disk($disk)->download($proposal->resume_path, $proposal->resume_name);
@@ -74,7 +77,7 @@ class FreelancerResumeController extends Controller
             return;
         }
 
-        foreach (['local', 'public'] as $disk) {
+        foreach (array_unique([MarketplaceStorage::privateDisk(), MarketplaceStorage::publicDisk()]) as $disk) {
             if (Storage::disk($disk)->exists($path)) {
                 Storage::disk($disk)->delete($path);
             }
