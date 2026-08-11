@@ -7,16 +7,19 @@ use App\Models\FreelancerResume;
 use App\Models\Job;
 use App\Models\PortfolioItem;
 use App\Models\Proposal;
-use App\Services\MarketplaceNotificationService;
 use App\Services\MarketplaceHiringService;
+use App\Services\MarketplaceNotificationService;
 use App\Services\MarketplacePaymentService;
 use App\Services\ProposalCreditService;
 use App\Services\TrustSummaryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class ProposalController extends Controller
 {
@@ -25,54 +28,83 @@ class ProposalController extends Controller
         abort_unless($request->user()->hasRole('freelancer'), 403, 'Add the Freelancer role before submitting a proposal.');
         abort_unless($job->status === 'open', 422, 'This job is no longer accepting proposals.');
 
+        $minimumBid = max(1000, (int) ($job->budget_min ?? 0));
+        $bidRules = ['required', 'integer', "min:{$minimumBid}"];
+
+        if ($job->budget_max !== null) {
+            $bidRules[] = "max:{$job->budget_max}";
+        }
+
         $data = $request->validate([
             'cover_letter' => ['required', 'string', 'min:40', 'max:4000'],
-            'bid_amount' => ['required', 'integer', 'min:1000'],
+            'bid_amount' => $bidRules,
             'delivery_days' => ['nullable', 'integer', 'min:1', 'max:365'],
             'portfolio_item_ids' => ['nullable', 'array', 'max:3'],
             'portfolio_item_ids.*' => ['integer', 'distinct'],
             'attach_resume' => ['nullable', 'boolean'],
+            'proposal_resume' => ['nullable', 'file', 'mimes:pdf', 'max:10240'],
         ]);
 
-        $proposal = DB::transaction(function () use ($request, $job, $data, $credits) {
-            $existing = Proposal::query()
-                ->where('job_id', $job->id)
-                ->where('freelancer_id', $request->user()->id)
-                ->lockForUpdate()
-                ->first();
+        $uploadedResume = $request->file('proposal_resume');
+        $proposalResumePath = null;
 
-            if ($existing) {
-                throw ValidationException::withMessages(['proposal' => 'You have already submitted a proposal for this job.']);
+        try {
+            $proposal = DB::transaction(function () use ($request, $job, $data, $credits, $uploadedResume, &$proposalResumePath) {
+                $existing = Proposal::query()
+                    ->where('job_id', $job->id)
+                    ->where('freelancer_id', $request->user()->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($existing) {
+                    throw ValidationException::withMessages(['proposal' => 'You have already submitted a proposal for this job.']);
+                }
+
+                $portfolioItems = PortfolioItem::query()
+                    ->where('user_id', $request->user()->id)
+                    ->whereIn('id', $data['portfolio_item_ids'] ?? [])
+                    ->get();
+                abort_if($portfolioItems->count() !== count($data['portfolio_item_ids'] ?? []), 422, 'One or more selected portfolio items are unavailable.');
+                $resume = ($data['attach_resume'] ?? false)
+                    ? FreelancerResume::where('user_id', $request->user()->id)->first()
+                    : null;
+                abort_if(($data['attach_resume'] ?? false) && ! $resume && ! $uploadedResume, 422, 'Upload a PDF CV before attaching it to a proposal.');
+
+                if ($uploadedResume) {
+                    $proposalResumePath = $uploadedResume->store("proposal-resumes/{$request->user()->id}", 'local');
+                } elseif ($resume) {
+                    $sourceDisk = Storage::disk('local')->exists($resume->storage_path) ? 'local' : 'public';
+                    abort_unless(Storage::disk($sourceDisk)->exists($resume->storage_path), 422, 'Your saved CV is unavailable. Upload it again before attaching it to a proposal.');
+
+                    $proposalResumePath = "proposal-resumes/{$request->user()->id}/".Str::uuid().'.pdf';
+                    Storage::disk('local')->put($proposalResumePath, Storage::disk($sourceDisk)->get($resume->storage_path));
+                }
+
+                $proposal = Proposal::create(Arr::only($data, ['cover_letter', 'bid_amount', 'delivery_days']) + [
+                    'job_id' => $job->id,
+                    'freelancer_id' => $request->user()->id,
+                    'resume_path' => $proposalResumePath,
+                    'resume_name' => $uploadedResume ? $uploadedResume->getClientOriginalName() : $resume?->original_name,
+                ]);
+                $proposal->workSamples()->createMany($portfolioItems->map(fn (PortfolioItem $item) => [
+                    'portfolio_item_id' => $item->id,
+                    'title' => $item->title,
+                    'description' => $item->description,
+                    'project_url' => $item->project_url,
+                    'image_url' => $item->image_url,
+                ])->all());
+                $cost = $credits->deductForProposal($request->user(), $job, $proposal);
+                $proposal->update(['credit_cost' => $cost]);
+
+                return $proposal;
+            });
+        } catch (Throwable $exception) {
+            if ($proposalResumePath) {
+                Storage::disk('local')->delete($proposalResumePath);
             }
 
-            $portfolioItems = PortfolioItem::query()
-                ->where('user_id', $request->user()->id)
-                ->whereIn('id', $data['portfolio_item_ids'] ?? [])
-                ->get();
-            abort_if($portfolioItems->count() !== count($data['portfolio_item_ids'] ?? []), 422, 'One or more selected portfolio items are unavailable.');
-            $resume = ($data['attach_resume'] ?? false)
-                ? FreelancerResume::where('user_id', $request->user()->id)->first()
-                : null;
-            abort_if(($data['attach_resume'] ?? false) && ! $resume, 422, 'Upload a PDF CV before attaching it to a proposal.');
-
-            $proposal = Proposal::create(Arr::only($data, ['cover_letter', 'bid_amount', 'delivery_days']) + [
-                'job_id' => $job->id,
-                'freelancer_id' => $request->user()->id,
-                'resume_path' => $resume?->storage_path,
-                'resume_name' => $resume?->original_name,
-            ]);
-            $proposal->workSamples()->createMany($portfolioItems->map(fn (PortfolioItem $item) => [
-                'portfolio_item_id' => $item->id,
-                'title' => $item->title,
-                'description' => $item->description,
-                'project_url' => $item->project_url,
-                'image_url' => $item->image_url,
-            ])->all());
-            $cost = $credits->deductForProposal($request->user(), $job, $proposal);
-            $proposal->update(['credit_cost' => $cost]);
-
-            return $proposal;
-        });
+            throw $exception;
+        }
         $notifications->send($job->client_id, 'proposal_received', 'New proposal received', "{$request->user()->name} applied for {$job->title}.", "/jobs/{$job->id}");
 
         return response()->json([
@@ -86,6 +118,18 @@ class ProposalController extends Controller
         abort_unless($request->user()->hasRole('freelancer'), 403);
 
         return ['data' => $request->user()->proposals()->with(['job.client.clientProfile', 'workSamples', 'latestOffer'])->latest()->get()];
+    }
+
+    public function mineForJob(Request $request, Job $job)
+    {
+        abort_unless($request->user()->hasRole('freelancer'), 403);
+
+        return [
+            'data' => $request->user()->proposals()
+                ->where('job_id', $job->id)
+                ->with(['job', 'workSamples', 'latestOffer'])
+                ->first(),
+        ];
     }
 
     public function forJob(Request $request, Job $job, TrustSummaryService $trust)
@@ -109,7 +153,7 @@ class ProposalController extends Controller
 
         if ($data['status'] === 'withdrawn') {
             abort_unless($proposal->freelancer_id === $request->user()->id, 403, 'Only the freelancer can withdraw this proposal.');
-            abort_unless(in_array($proposal->status, ['submitted', 'shortlisted'], true), 422, 'Only an active proposal can be withdrawn.');
+            abort_unless(in_array($proposal->status, ['submitted', 'shortlisted', 'interviewing'], true), 422, 'Only an active proposal can be withdrawn. Decline a pending offer instead.');
             $proposal->update(['status' => 'withdrawn']);
             $notifications->send($proposal->job->client_id, 'proposal_withdrawn', 'Proposal withdrawn', "{$request->user()->name} withdrew their proposal for {$proposal->job->title}.", "/jobs/{$proposal->job_id}");
 

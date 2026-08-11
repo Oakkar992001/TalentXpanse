@@ -32,10 +32,11 @@ function ThemeToggle() {
   return <button className="theme-toggle theme-icon" onClick={toggleTheme} title={`${label}. Click to switch.`} aria-label={`${label}. Click to switch.`}><Icon name={isLight ? 'sun' : 'moon'} /></button>
 }
 
-function LanguageToggle() {
-  const { language, toggleLanguage } = usePreferences()
+function LanguageToggle({ compact = false }) {
+  const { language, t, toggleLanguage } = usePreferences()
   const isEnglish = language === 'en'
-  return <button className="language-toggle preference-choice" onClick={toggleLanguage} title={`Language: ${isEnglish ? 'English' : 'Myanmar'}. Click to switch.`} aria-label={`Language: ${isEnglish ? 'English' : 'Myanmar'}. Click to switch.`}><span className={isEnglish ? 'active' : ''}>English</span><i>/</i><span className={!isEnglish ? 'active myanmar' : 'myanmar'}>မြန်မာ</span></button>
+  const activeLanguage = isEnglish ? t('common.english', 'English') : t('common.myanmar', 'Myanmar')
+  return <button className={`language-toggle preference-choice ${compact ? 'preference-choice-compact' : ''}`} onClick={toggleLanguage} title={`${t('language.label', 'Language')}: ${activeLanguage}.`} aria-label={`${t('language.label', 'Language')}: ${activeLanguage}.`}>{compact ? <span className="active">{isEnglish ? 'EN' : 'မြန်'}</span> : <><span className={isEnglish ? 'active' : ''}>{t('common.english', 'English')}</span><i>/</i><span className={!isEnglish ? 'active myanmar' : 'myanmar'}>{t('common.myanmar', 'Myanmar')}</span></>}</button>
 }
 
 function PublicHeader() {
@@ -63,7 +64,7 @@ function DashboardShell() {
   const role = user?.roles?.includes(requestedRole) ? requestedRole : (user?.active_role || user?.roles?.[0] || 'freelancer')
   const links = role === 'client' ? clientLinks : freelancerLinks
   const defaultTitle = role === 'client' ? t('workspace.client', 'Client workspace') : t('workspace.freelancer', 'Freelancer workspace')
-  const title = pathname === '/messages' ? t('nav.messages', 'Messages') : pathname === '/notifications' ? t('nav.notifications', 'Notifications') : pathname.startsWith('/settings') ? t('nav.settings', 'Settings') : pathname.startsWith('/projects') ? t('nav.projects', 'Projects') : pathname.startsWith('/manage') ? 'Proposal manager' : pathname === '/work' ? 'My work' : pathname === '/profile' ? t('nav.profile', 'My profile') : pathname.startsWith('/search/jobs/') ? 'Job details' : pathname.startsWith('/search/freelancers/') ? 'Freelancer profile' : pathname.startsWith('/search') ? 'Search marketplace' : pathname === '/jobs' ? t('nav.find_jobs', 'Find jobs') : defaultTitle
+  const title = pathname === '/messages' ? t('nav.messages', 'Messages') : pathname === '/notifications' ? t('nav.notifications', 'Notifications') : pathname.startsWith('/settings') ? t('nav.settings', 'Settings') : pathname.startsWith('/projects') ? t('nav.projects', 'Projects') : pathname.startsWith('/manage') ? t('nav.proposal_manager', 'Proposal manager') : pathname === '/work' ? t('nav.my_work', 'My work') : pathname === '/profile' ? t('nav.profile', 'My profile') : pathname.startsWith('/search/jobs/') ? t('nav.job_details', 'Job details') : pathname.startsWith('/search/freelancers/') ? t('nav.freelancer_profile', 'Freelancer profile') : pathname.startsWith('/search') ? t('nav.marketplace_search', 'Search marketplace') : pathname === '/jobs' ? t('nav.find_jobs', 'Find jobs') : defaultTitle
   const subtitle = role === 'client' ? t('workspace.client_subtitle', 'Manage hiring and delivery in one place.') : t('workspace.freelancer_subtitle', 'Discover work and keep projects moving.')
   const nav = (target) => navigate(target)
 
@@ -74,7 +75,7 @@ function DashboardShell() {
         const translatedLabel = t(key, label)
         return <button key={label} aria-label={translatedLabel} className={pathname === target.split('?')[0] && (label !== 'Overview' || pathname === '/dashboard') ? 'active' : ''} onClick={() => nav(target)}><span><Icon name={label === 'Messages' ? 'messages' : label === 'Projects' ? 'projects' : label === 'My profile' ? 'settings' : 'overview'} /></span><em>{translatedLabel}</em></button>
       })}</nav>
-      <div className="sidebar-bottom"><AccountMenu /><div className="sidebar-preferences"><div className="preference-row"><small>Language</small><LanguageToggle /></div><div className="preference-row"><small>Theme</small><ThemeToggle /></div></div></div>
+      <div className="sidebar-bottom"><AccountMenu compact={!collapsed} /><div className="sidebar-preferences"><div className="preference-row"><small>{t('language.label', 'Language')}</small><LanguageToggle compact={collapsed} /></div><div className="preference-row"><small>{t('theme.label', 'Theme')}</small><ThemeToggle /></div></div></div>
     </aside>
     <a className="skip-link" href="#workspace-content">Skip to workspace content</a><main id="workspace-content" className="dashboard-main" tabIndex="-1">
       <header className="dashboard-topbar"><div><h2>{title}</h2><p>{subtitle}</p></div><div className="topbar-actions"><button className="topbar-search" onClick={() => setSearchOpen(true)}><span><Icon name="search" /></span> {t('nav.search', 'Search')}</button><NotificationMenu /><div className="mobile-preferences"><LanguageToggle /><ThemeToggle /></div><div className="mobile-account"><AccountMenu placement="top" /></div></div></header>

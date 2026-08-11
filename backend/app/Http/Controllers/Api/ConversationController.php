@@ -75,7 +75,7 @@ class ConversationController extends Controller
         $this->markRead($conversation, $request->user());
         $recipientId = $conversation->client_id === $request->user()->id ? $conversation->freelancer_id : $conversation->client_id;
         $preview = $message->body ?: 'Shared a file';
-        $notifications->send($recipientId, 'message_received', 'New message', "{$request->user()->name}: ".str($preview)->limit(120), '/messages');
+        $notifications->send($recipientId, 'message_received', 'New message', "{$request->user()->name}: ".str($preview)->limit(120), "/messages?conversation={$conversation->id}");
         MarketplaceMessageCreated::dispatch($conversation->id, $recipientId);
 
         return response()->json(['data' => $message], 201);

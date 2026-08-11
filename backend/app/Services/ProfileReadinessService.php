@@ -14,7 +14,8 @@ class ProfileReadinessService
         return [
             ['key' => 'photo', 'label' => 'Add a profile photo', 'completed' => filled($user->profile_photo_path), 'weight' => 15],
             ['key' => 'title', 'label' => 'Add a professional title', 'completed' => filled($profile?->title), 'weight' => 15],
-            ['key' => 'bio', 'label' => 'Write an introduction', 'completed' => filled($profile?->bio), 'weight' => 20],
+            ['key' => 'bio', 'label' => 'Write an introduction', 'completed' => filled($profile?->bio), 'weight' => 15],
+            ['key' => 'experience', 'label' => 'Choose your experience level', 'completed' => filled($profile?->experience_level), 'weight' => 5],
             ['key' => 'rate', 'label' => 'Set an hourly rate', 'completed' => filled($profile?->hourly_rate), 'weight' => 10],
             ['key' => 'skills', 'label' => 'Add your key skills', 'completed' => ! empty($profile?->skills), 'weight' => 15],
             ['key' => 'location', 'label' => 'Add your location', 'completed' => filled($profile?->location), 'weight' => 10],

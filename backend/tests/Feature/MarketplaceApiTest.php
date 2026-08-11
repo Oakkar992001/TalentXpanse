@@ -8,12 +8,14 @@ use App\Models\Contract;
 use App\Models\ContractSupportRequest;
 use App\Models\Conversation;
 use App\Models\FreelancerResume;
+use App\Models\IdentityVerificationSubmission;
 use App\Models\Job;
 use App\Models\MarketplaceNotification;
 use App\Models\MarketplaceReliabilityEvent;
 use App\Models\PortfolioItem;
 use App\Models\Proposal;
 use App\Models\ProposalCreditAccount;
+use App\Models\ProposalCreditAllocation;
 use App\Models\ProposalCreditGrant;
 use App\Models\ProposalOffer;
 use App\Models\Role;
@@ -26,6 +28,7 @@ use App\Services\ProposalCreditService;
 use Illuminate\Broadcasting\BroadcastManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
@@ -33,7 +36,7 @@ use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password as PasswordBroker;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
-use Illuminate\Support\Carbon;
+use Laravel\Sanctum\PersonalAccessToken;
 use Laravel\Sanctum\Sanctum;
 use LogicException;
 use Tests\TestCase;
@@ -41,6 +44,53 @@ use Tests\TestCase;
 class MarketplaceApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_api_validation_uses_myanmar_when_requested(): void
+    {
+        $this->withHeader('Accept-Language', 'my-MM,my;q=0.9')
+            ->postJson('/api/auth/register', [])
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.email.0', 'အီးမေးလ် လိုအပ်ပါသည်။');
+    }
+
+    public function test_member_sessions_have_a_server_enforced_expiry(): void
+    {
+        $this->travelTo(Carbon::parse('2026-08-07 10:00:00'));
+        $member = User::factory()->create(['password' => Hash::make('member-session-password')]);
+
+        $response = $this->postJson('/api/auth/login', [
+            'email' => $member->email,
+            'password' => 'member-session-password',
+        ])->assertOk()->assertJsonStructure(['token', 'expires_at', 'user']);
+
+        $token = $response->json('token');
+        $accessToken = PersonalAccessToken::findToken($token);
+        $this->assertTrue($accessToken->expires_at->equalTo(now()->addMinutes(480)));
+
+        $this->travel(481)->minutes();
+        $this->withToken($token)->getJson('/api/auth/user')->assertUnauthorized();
+        $this->travelBack();
+    }
+
+    public function test_admin_sessions_expire_sooner_than_member_sessions(): void
+    {
+        $this->travelTo(Carbon::parse('2026-08-07 10:00:00'));
+        $admin = User::factory()->create(['password' => Hash::make('admin-session-password')]);
+        $admin->roles()->attach(Role::firstOrCreate(['name' => 'admin']));
+
+        $response = $this->postJson('/api/admin/auth/login', [
+            'email' => $admin->email,
+            'password' => 'admin-session-password',
+        ])->assertOk()->assertJsonStructure(['token', 'expires_at', 'user']);
+
+        $token = $response->json('token');
+        $accessToken = PersonalAccessToken::findToken($token);
+        $this->assertTrue($accessToken->expires_at->equalTo(now()->addMinutes(30)));
+
+        $this->travel(31)->minutes();
+        $this->withToken($token)->getJson('/api/admin/dashboard')->assertUnauthorized();
+        $this->travelBack();
+    }
 
     public function test_free_credits_expire_after_sixty_days_and_never_roll_over_above_forty(): void
     {
@@ -136,6 +186,7 @@ class MarketplaceApiTest extends TestCase
 
         app(ProposalCreditService::class)->deductForProposal($freelancer, $job, $proposal);
         $this->assertDatabaseHas('proposal_credit_accounts', ['user_id' => $freelancer->id, 'balance' => 18]);
+        $spentGrant = ProposalCreditAllocation::where('proposal_id', $proposal->id)->firstOrFail()->proposalCreditGrant;
 
         $this->actingAs($client, 'sanctum')->patchJson("/api/jobs/{$job->id}", ['status' => 'closed'])
             ->assertOk()
@@ -149,6 +200,8 @@ class MarketplaceApiTest extends TestCase
         ]);
         $this->assertDatabaseHas('proposal_credit_accounts', ['user_id' => $freelancer->id, 'balance' => 20]);
         $this->assertDatabaseCount('proposal_credit_grants', 2);
+        $refundGrant = ProposalCreditGrant::where('proposal_id', $proposal->id)->where('source', 'proposal_refund')->firstOrFail();
+        $this->assertTrue($refundGrant->expires_at->equalTo($spentGrant->expires_at));
     }
 
     public function test_premium_credit_policy_is_ready_for_a_verified_membership_event(): void
@@ -320,6 +373,9 @@ class MarketplaceApiTest extends TestCase
 
         $contract = Contract::where('proposal_id', $proposal['id'])->firstOrFail();
         $this->assertDatabaseHas('conversations', ['id' => $conversation['id'], 'type' => 'project']);
+        $asClient()->getJson("/api/contracts/{$contract->id}")
+            ->assertOk()
+            ->assertJsonPath('data.conversation_id', $conversation['id']);
 
         $milestone = $asClient()->postJson("/api/contracts/{$contract->id}/milestones", [
             'title' => 'Dashboard implementation and handover',
@@ -360,13 +416,13 @@ class MarketplaceApiTest extends TestCase
         $asFreelancer()->getJson('/api/notifications')
             ->assertOk()
             ->assertJsonFragment(['type' => 'proposal_hired'])
-            ->assertJsonFragment(['type' => 'milestone_approved'])
-            ->assertJsonFragment(['type' => 'contract_completed']);
+            ->assertJsonFragment(['type' => 'milestone_approved', 'url' => "/projects/{$contract->id}?milestone={$milestone['id']}&focus=milestone"])
+            ->assertJsonFragment(['type' => 'contract_completed', 'url' => "/projects/{$contract->id}?focus=completion"]);
         $asClient()->getJson('/api/notifications')
             ->assertOk()
             ->assertJsonFragment(['type' => 'proposal_received'])
-            ->assertJsonFragment(['type' => 'message_received'])
-            ->assertJsonFragment(['type' => 'milestone_submitted']);
+            ->assertJsonFragment(['type' => 'message_received', 'url' => "/messages?conversation={$conversation['id']}"])
+            ->assertJsonFragment(['type' => 'milestone_submitted', 'url' => "/projects/{$contract->id}?milestone={$milestone['id']}&focus=milestone"]);
 
         $this->assertDatabaseHas('contracts', ['id' => $contract->id, 'status' => 'completed']);
         $this->assertDatabaseHas('marketplace_jobs', ['id' => $job['id'], 'status' => 'completed']);
@@ -547,11 +603,21 @@ class MarketplaceApiTest extends TestCase
             'delivery_days' => 14,
         ];
 
+        $this->actingAs($freelancer, 'sanctum')->postJson("/api/jobs/{$job->id}/proposals", [...$payload, 'bid_amount' => 199000])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('bid_amount');
+        $this->actingAs($freelancer, 'sanctum')->postJson("/api/jobs/{$job->id}/proposals", [...$payload, 'bid_amount' => 401000])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('bid_amount');
+
         $this->actingAs($freelancer, 'sanctum')->postJson("/api/jobs/{$job->id}/proposals", $payload)
             ->assertCreated()
             ->assertJsonPath('data.credit_cost', 2)
             ->assertJsonPath('proposal_credits.balance', 18);
         $this->actingAs($freelancer, 'sanctum')->postJson("/api/jobs/{$job->id}/proposals", $payload)->assertUnprocessable();
+        $this->actingAs($freelancer, 'sanctum')->getJson("/api/jobs/{$job->id}/my-proposal")
+            ->assertOk()
+            ->assertJsonPath('data.bid_amount', 350000);
 
         $this->assertDatabaseHas('proposal_credit_accounts', ['user_id' => $freelancer->id, 'balance' => 18]);
         $this->assertDatabaseHas('proposal_credit_transactions', ['user_id' => $freelancer->id, 'type' => 'proposal_submission', 'amount' => -2]);
@@ -564,7 +630,7 @@ class MarketplaceApiTest extends TestCase
         $client->roles()->attach(Role::firstOrCreate(['name' => 'client']));
         $freelancer->roles()->attach(Role::firstOrCreate(['name' => 'freelancer']));
         $job = Job::create(['client_id' => $client->id, 'title' => 'Build a job tracker', 'description' => 'Create a clear job-tracking experience with practical proposal status information for freelancers.', 'category' => 'Development & IT', 'budget_min' => 200000, 'budget_max' => 300000, 'status' => 'open']);
-        $proposal = Proposal::create(['job_id' => $job->id, 'freelancer_id' => $freelancer->id, 'cover_letter' => 'I can build a practical proposal tracker with clear statuses, accessible controls, and careful attention to the freelancer workflow.', 'bid_amount' => 250000, 'delivery_days' => 12, 'status' => 'submitted', 'credit_cost' => 2]);
+        $proposal = Proposal::create(['job_id' => $job->id, 'freelancer_id' => $freelancer->id, 'cover_letter' => 'I can build a practical proposal tracker with clear statuses, accessible controls, and careful attention to the freelancer workflow.', 'bid_amount' => 250000, 'delivery_days' => 12, 'status' => 'interviewing', 'credit_cost' => 2]);
 
         $this->actingAs($freelancer, 'sanctum')->getJson('/api/proposals/mine')->assertOk()->assertJsonPath('data.0.id', $proposal->id);
         $this->actingAs($client, 'sanctum')->patchJson("/api/proposals/{$proposal->id}", ['status' => 'withdrawn'])->assertForbidden();
@@ -602,6 +668,7 @@ class MarketplaceApiTest extends TestCase
 
         $this->assertDatabaseHas('proposals', ['id' => $selected->id, 'status' => 'hired']);
         $this->assertDatabaseHas('proposals', ['id' => $other->id, 'status' => 'declined']);
+        $this->assertDatabaseHas('marketplace_notifications', ['user_id' => $secondFreelancer->id, 'type' => 'proposal_not_selected']);
         $this->assertDatabaseHas('marketplace_jobs', ['id' => $job->id, 'status' => 'in_progress']);
         $this->assertDatabaseHas('contracts', ['proposal_id' => $selected->id, 'status' => 'active', 'agreed_amount' => 600000]);
         $this->actingAs($client, 'sanctum')->patchJson("/api/jobs/{$job->id}", ['status' => 'open'])->assertUnprocessable();
@@ -639,6 +706,85 @@ class MarketplaceApiTest extends TestCase
         ])->assertCreated()->assertJsonPath('data.work_samples.0.title', 'Wallet onboarding redesign');
 
         $this->assertDatabaseHas('proposal_work_samples', ['portfolio_item_id' => $sample->id, 'title' => 'Wallet onboarding redesign']);
+    }
+
+    public function test_a_freelancer_can_attach_a_proposal_specific_cv_without_replacing_their_profile_cv(): void
+    {
+        Storage::fake('local');
+        $client = User::factory()->create();
+        $freelancer = User::factory()->create();
+        $client->roles()->attach(Role::firstOrCreate(['name' => 'client']));
+        $freelancer->roles()->attach(Role::firstOrCreate(['name' => 'freelancer']));
+        $job = Job::create([
+            'client_id' => $client->id,
+            'title' => 'Build a mobile marketplace experience',
+            'description' => 'Create a polished mobile marketplace experience with a simple proposal journey and accessible visual design.',
+            'category' => 'Development & IT',
+            'budget_min' => 200000,
+            'budget_max' => 360000,
+            'status' => 'open',
+        ]);
+        $profileResume = FreelancerResume::create([
+            'user_id' => $freelancer->id,
+            'original_name' => 'profile-cv.pdf',
+            'storage_path' => "resumes/{$freelancer->id}/profile-cv.pdf",
+            'file_size' => 120,
+        ]);
+        Storage::disk('local')->put($profileResume->storage_path, 'profile CV');
+
+        $response = $this->actingAs($freelancer, 'sanctum')->post("/api/jobs/{$job->id}/proposals", [
+            'cover_letter' => 'I can build a focused mobile marketplace experience with clear proposal flows, accessible controls, and thoughtful visual hierarchy.',
+            'bid_amount' => 300000,
+            'delivery_days' => 14,
+            'attach_resume' => false,
+            'proposal_resume' => UploadedFile::fake()->create('tailored-cv.pdf', 300, 'application/pdf'),
+        ])->assertCreated()->assertJsonPath('data.resume_name', 'tailored-cv.pdf');
+
+        $proposal = Proposal::findOrFail($response->json('data.id'));
+        $this->assertNotSame($profileResume->storage_path, $proposal->resume_path);
+        Storage::disk('local')->assertExists($profileResume->storage_path);
+        Storage::disk('local')->assertExists($proposal->resume_path);
+    }
+
+    public function test_a_saved_cv_is_copied_to_a_proposal_before_it_is_removed_from_the_profile(): void
+    {
+        Storage::fake('local');
+        $client = User::factory()->create();
+        $freelancer = User::factory()->create();
+        $client->roles()->attach(Role::firstOrCreate(['name' => 'client']));
+        $freelancer->roles()->attach(Role::firstOrCreate(['name' => 'freelancer']));
+        $job = Job::create([
+            'client_id' => $client->id,
+            'title' => 'Create a responsive business portal',
+            'description' => 'Build a responsive business portal with clear user flows, a maintainable Laravel backend, and a polished dashboard interface.',
+            'category' => 'Development & IT',
+            'budget_min' => 250000,
+            'budget_max' => 450000,
+            'status' => 'open',
+        ]);
+        $resume = FreelancerResume::create([
+            'user_id' => $freelancer->id,
+            'original_name' => 'saved-cv.pdf',
+            'storage_path' => "resumes/{$freelancer->id}/saved-cv.pdf",
+            'file_size' => 120,
+        ]);
+        Storage::disk('local')->put($resume->storage_path, 'saved CV');
+
+        $response = $this->actingAs($freelancer, 'sanctum')->postJson("/api/jobs/{$job->id}/proposals", [
+            'cover_letter' => 'I can create a reliable responsive portal with thoughtful user flows, a maintainable backend, and a clear delivery plan for your team.',
+            'bid_amount' => 350000,
+            'delivery_days' => 18,
+            'attach_resume' => true,
+        ])->assertCreated()->assertJsonPath('data.resume_name', 'saved-cv.pdf');
+
+        $proposal = Proposal::findOrFail($response->json('data.id'));
+        $this->assertNotSame($resume->storage_path, $proposal->resume_path);
+        Storage::disk('local')->assertExists($proposal->resume_path);
+
+        $this->actingAs($freelancer, 'sanctum')->delete('/api/freelancer-resume')->assertNoContent();
+        Storage::disk('local')->assertMissing($resume->storage_path);
+        Storage::disk('local')->assertExists($proposal->resume_path);
+        $this->actingAs($client, 'sanctum')->get("/api/proposals/{$proposal->id}/resume")->assertOk();
     }
 
     public function test_a_user_can_upload_a_profile_photo(): void
@@ -903,18 +1049,23 @@ class MarketplaceApiTest extends TestCase
 
         $this->actingAs($freelancer, 'sanctum')->putJson('/api/freelancer-profile', [
             'title' => 'Laravel developer',
+            'experience_level' => 'intermediate',
             'bio' => 'I build reliable marketplace and business tools for local teams.',
             'hourly_rate' => 50000,
             'skills' => ['Laravel', 'React'],
             'location' => 'Yangon, Myanmar',
         ])->assertOk()
             ->assertJsonPath('data.profile_completeness', 70)
+            ->assertJsonPath('data.freelancer_profile.experience_level', 'intermediate')
             ->assertJsonPath('data.profile_checklist.0.key', 'photo')
             ->assertJsonPath('data.profile_checklist.1.completed', true);
 
         $this->actingAs($freelancer, 'sanctum')->getJson('/api/account-settings')
             ->assertOk()
             ->assertJsonPath('data.freelancer_profile.profile_completeness', 70);
+        $this->getJson("/api/freelancers/{$freelancer->id}")
+            ->assertOk()
+            ->assertJsonPath('data.freelancer_profile.experience_level', 'intermediate');
     }
 
     public function test_users_can_manage_notification_preferences_that_control_in_app_alerts(): void
@@ -1146,12 +1297,77 @@ class MarketplaceApiTest extends TestCase
         $this->actingAs($client, 'sanctum')->patchJson("/api/contract-scope-changes/{$change['id']}", ['status' => 'accepted'])->assertOk()->assertJsonPath('data.status', 'accepted');
         $this->assertDatabaseHas('contracts', ['id' => $contract->id, 'agreed_amount' => 350000]);
 
-        $this->actingAs($freelancer, 'sanctum')->postJson('/api/verification-requests', ['type' => 'identity'])
-            ->assertOk()->assertJsonPath('data.status', 'pending');
+        Storage::fake('local');
+        $this->actingAs($freelancer, 'sanctum')->post('/api/verification-requests', [
+            'type' => 'identity',
+            'nrc_front' => $this->nrcImage('nrc-front.png'),
+            'nrc_back' => $this->nrcImage('nrc-back.png'),
+        ])->assertCreated()->assertJsonPath('data.status', 'pending');
         Sanctum::actingAs($admin, ['admin']);
-        $this->getJson('/api/admin/verifications')->assertOk()->assertJsonPath('data.identity.0.id', $freelancer->id);
+        $this->getJson('/api/admin/verifications')->assertOk()->assertJsonPath('data.identity.0.user.id', $freelancer->id);
         $this->patchJson("/api/admin/users/{$freelancer->id}/identity-verification", ['status' => 'verified'])
             ->assertOk()->assertJsonPath('data.identity_verification_status', 'verified');
+    }
+
+    public function test_identity_documents_are_private_audited_and_purged_after_review(): void
+    {
+        Storage::fake('local');
+
+        $member = User::factory()->create();
+        $administrator = User::factory()->create();
+        $member->roles()->attach([
+            Role::firstOrCreate(['name' => 'client'])->id,
+            Role::firstOrCreate(['name' => 'freelancer'])->id,
+        ]);
+        $administrator->roles()->attach(Role::firstOrCreate(['name' => 'admin']));
+
+        $this->actingAs($member, 'sanctum')->post('/api/verification-requests', [
+            'type' => 'identity',
+            'note' => 'My name is abbreviated in my profile.',
+            'nrc_front' => $this->nrcImage('nrc-front.png'),
+            'nrc_back' => $this->nrcImage('nrc-back.png'),
+        ])->assertCreated()->assertJsonPath('data.status', 'pending');
+
+        $submission = IdentityVerificationSubmission::query()->where('user_id', $member->id)->firstOrFail();
+        $frontPath = $submission->nrc_front_path;
+        $backPath = $submission->nrc_back_path;
+        Storage::disk('local')->assertExists($frontPath);
+        Storage::disk('local')->assertExists($backPath);
+        $this->actingAs($member, 'sanctum')->getJson('/api/account-settings')
+            ->assertOk()
+            ->assertJsonPath('data.identity_verification_submission_pending', true);
+
+        $this->actingAs($member, 'sanctum')
+            ->getJson("/api/admin/identity-verification-submissions/{$submission->id}/documents/front")
+            ->assertUnauthorized();
+
+        Sanctum::actingAs($administrator, ['admin']);
+        $this->getJson('/api/admin/verifications')
+            ->assertOk()
+            ->assertJsonPath('data.identity.0.id', $submission->id)
+            ->assertJsonMissing(['nrc_front_path' => $submission->nrc_front_path])
+            ->assertJsonMissing(['nrc_back_path' => $submission->nrc_back_path]);
+        $this->getJson("/api/admin/identity-verification-submissions/{$submission->id}/documents/front")
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private');
+        $this->assertDatabaseHas('marketplace_admin_audit_logs', [
+            'admin_user_id' => $administrator->id,
+            'action' => 'identity_verification.document_accessed',
+            'subject_type' => 'IdentityVerificationSubmission',
+            'subject_id' => $submission->id,
+        ]);
+
+        $this->patchJson("/api/admin/users/{$member->id}/identity-verification", ['status' => 'verified'])
+            ->assertOk()
+            ->assertJsonPath('data.identity_verification_status', 'verified');
+
+        $submission->refresh();
+        $this->assertSame('verified', $submission->status);
+        $this->assertNull($submission->nrc_front_path);
+        $this->assertNull($submission->nrc_back_path);
+        $this->assertNotNull($submission->documents_purged_at);
+        Storage::disk('local')->assertMissing([$frontPath, $backPath]);
+        $this->getJson("/api/admin/identity-verification-submissions/{$submission->id}/documents/front")->assertNotFound();
     }
 
     public function test_public_marketplace_responses_only_expose_open_jobs_and_safe_profile_fields(): void
@@ -1217,6 +1433,10 @@ class MarketplaceApiTest extends TestCase
         $secondPath = FreelancerResume::where('user_id', $freelancer->id)->value('storage_path');
         Storage::disk('local')->assertMissing($firstPath);
         Storage::disk('local')->assertExists($secondPath);
+
+        $this->actingAs($freelancer, 'sanctum')->delete('/api/freelancer-resume')->assertNoContent();
+        $this->assertDatabaseMissing('freelancer_resumes', ['user_id' => $freelancer->id]);
+        Storage::disk('local')->assertMissing($secondPath);
     }
 
     public function test_a_cancellation_concern_stays_neutral_until_an_administrator_confirms_it(): void
@@ -1281,5 +1501,10 @@ class MarketplaceApiTest extends TestCase
             ->assertJsonPath('data.freelancer.score', 42)
             ->assertJsonPath('data.freelancer.search_visibility', 'reduced')
             ->assertJsonPath('data.freelancer.recent_events.0.resolution_note', 'The project record and communication history support a confirmed no-show concern.');
+    }
+
+    private function nrcImage(string $name): UploadedFile
+    {
+        return UploadedFile::fake()->createWithContent($name, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9n1i8AAAAASUVORK5CYII='));
     }
 }

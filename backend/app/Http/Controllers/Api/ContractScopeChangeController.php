@@ -28,7 +28,7 @@ class ContractScopeChangeController extends Controller
 
         $change = $contract->scopeChangeRequests()->create($data + ['requested_by' => $request->user()->id]);
         $this->event($contract, 'scope_change_requested', "Scope change requested: {$change->title}");
-        $notifications->send($this->partnerId($contract, $request->user()->id), 'scope_change_requested', 'Scope change needs your review', "{$request->user()->name} requested a scope change for {$contract->title}.", "/projects/{$contract->id}");
+        $notifications->send($this->partnerId($contract, $request->user()->id), 'scope_change_requested', 'Scope change needs your review', "{$request->user()->name} requested a scope change for {$contract->title}.", "/projects/{$contract->id}?focus=scope-changes");
 
         return response()->json(['data' => $change->fresh(['requester'])], 201);
     }
@@ -65,7 +65,7 @@ class ContractScopeChangeController extends Controller
             return $scopeChange->fresh(['requester', 'responder']);
         });
         $this->event($contract, "scope_change_{$data['status']}", "Scope change {$data['status']}: {$scopeChange->title}");
-        $notifications->send($scopeChange->requested_by, "scope_change_{$data['status']}", 'Scope change updated', "Your scope change for {$contract->title} was {$data['status']}.", "/projects/{$contract->id}");
+        $notifications->send($scopeChange->requested_by, "scope_change_{$data['status']}", 'Scope change updated', "Your scope change for {$contract->title} was {$data['status']}.", "/projects/{$contract->id}?focus=scope-changes");
 
         return ['data' => $updated];
     }

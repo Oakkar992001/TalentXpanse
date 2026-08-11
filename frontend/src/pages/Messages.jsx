@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import { usePreferences } from '../contexts/PreferencesContext'
 import MarketplaceReportButton from '../components/MarketplaceReportButton'
 import { subscribeToUserChannel } from '../services/realtime'
 import '../messages-polish.css'
@@ -26,6 +27,7 @@ function formatBytes(size) {
 
 export default function MessagesScreen() {
   const { user, errorMessage } = useAuth()
+  const { t, formatDate } = usePreferences()
   const [params, setParams] = useSearchParams()
   const [conversations, setConversations] = useState([])
   const [conversation, setConversation] = useState(null)
@@ -147,7 +149,7 @@ export default function MessagesScreen() {
   const chooseAttachments = (event) => {
     const selected = Array.from(event.target.files || [])
     if (selected.length > 5 || selected.some((file) => file.size > 20 * 1024 * 1024)) {
-      setError('Attach up to five supported files, each no larger than 20 MB.')
+      setError(t('messages.attach_limit', 'Attach up to five supported files, each no larger than 20 MB.'))
       event.target.value = ''
       return
     }
@@ -192,28 +194,28 @@ export default function MessagesScreen() {
   }
 
   return <section className="messages-page">
-    <header><div><p className="eyebrow">Messages</p><h1>Keep work conversations in one place.</h1><p>Messages update automatically while this page is open. Share project context and supported files directly with the right person.</p></div></header>
+    <header><div><p className="eyebrow">{t('nav.messages', 'Messages')}</p><h1>{t('messages.heading', 'Keep work conversations in one place.')}</h1><p>{t('messages.intro', 'Messages update automatically while this page is open. Share project context and supported files directly with the right person.')}</p></div></header>
     {error && <p className="form-notice" role="alert">{error}</p>}
     <div className="messages-layout">
-      <aside className="conversation-list" aria-label="Conversations">
-        <div className="conversation-list-title"><h2>Conversations</h2><span>{conversations.reduce((total, item) => total + item.unread_count, 0)} unread</span></div>
-        {conversations.length ? conversations.map((item) => <button className={String(item.id) === String(conversation?.id) ? 'selected' : ''} key={item.id} onClick={() => loadConversation(item.id)}><ContactAvatar user={item.other_user} /><div><b>{item.other_user?.name}</b><small>{item.job?.title}</small><p>{item.last_message?.body || (item.type === 'project' ? 'Project chat is ready.' : 'Conversation started.')}</p></div>{item.unread_count > 0 && <em>{item.unread_count}</em>}</button>) : <p className="empty-panel">No conversations yet.</p>}
-        {isClient && startable.length > 0 && <div className="startable-list"><h3>Start from a proposal</h3>{startable.map((proposal) => <button key={proposal.id} disabled={busy} onClick={() => startConversation(proposal)}><ContactAvatar user={proposal.freelancer} /><div><b>{proposal.freelancer?.name}</b><small>{proposal.job?.title}</small></div><span>Message</span></button>)}</div>}
+      <aside className="conversation-list" aria-label={t('messages.conversations', 'Conversations')}>
+        <div className="conversation-list-title"><h2>{t('messages.conversations', 'Conversations')}</h2><span>{t('messages.unread', `${conversations.reduce((total, item) => total + item.unread_count, 0)} unread`, { count: conversations.reduce((total, item) => total + item.unread_count, 0) })}</span></div>
+        {conversations.length ? conversations.map((item) => <button className={String(item.id) === String(conversation?.id) ? 'selected' : ''} key={item.id} onClick={() => loadConversation(item.id)}><ContactAvatar user={item.other_user} /><div><b>{item.other_user?.name}</b><small>{item.job?.title}</small><p>{item.last_message?.body || (item.type === 'project' ? t('messages.project_ready', 'Project chat is ready.') : t('messages.conversation_started', 'Conversation started.'))}</p></div>{item.unread_count > 0 && <em>{item.unread_count}</em>}</button>) : <p className="empty-panel">{t('messages.no_conversations', 'No conversations yet.')}</p>}
+        {isClient && startable.length > 0 && <div className="startable-list"><h3>{t('messages.start_proposal', 'Start from a proposal')}</h3>{startable.map((proposal) => <button key={proposal.id} disabled={busy} onClick={() => startConversation(proposal)}><ContactAvatar user={proposal.freelancer} /><div><b>{proposal.freelancer?.name}</b><small>{proposal.job?.title}</small></div><span>{t('nav.messages', 'Message')}</span></button>)}</div>}
       </aside>
       <main className="chat-panel">
         {conversation ? <>
-          <header className="chat-header"><ContactAvatar user={conversation.other_user} /><div><b>{conversation.other_user?.name}</b><small>{conversation.type === 'project' ? `Project chat · ${conversation.job?.title}` : `Proposal chat · ${conversation.job?.title}`}</small></div><span className="chat-sync" aria-live="polite">{updatedAt ? 'Auto-updated' : 'Loading…'}</span></header>
+          <header className="chat-header"><ContactAvatar user={conversation.other_user} /><div><b>{conversation.other_user?.name}</b><small>{conversation.type === 'project' ? t('messages.project_chat', `Project chat · ${conversation.job?.title}`, { title: conversation.job?.title }) : t('messages.proposal_chat', `Proposal chat · ${conversation.job?.title}`, { title: conversation.job?.title })}</small></div><span className="chat-sync" aria-live="polite">{updatedAt ? t('messages.auto_updated', 'Auto-updated') : t('common.loading', 'Loading...')}</span></header>
           <div className="chat-messages" ref={messagesContainer} onScroll={trackScroll} aria-live="polite">
-            {showJumpToLatest && <button type="button" className="jump-to-latest" onClick={jumpToLatest}>Jump to latest message</button>}
+            {showJumpToLatest && <button type="button" className="jump-to-latest" onClick={jumpToLatest}>{t('messages.jump_latest', 'Jump to latest message')}</button>}
             {conversation.messages?.map((item) => item.kind === 'system'
-              ? <p className="chat-system-event" key={item.id}>{item.body}<small>{new Date(item.created_at).toLocaleString()}</small></p>
-              : <article className={item.sender_id === user.id ? 'sent' : ''} key={item.id}><p>{item.body}</p>{item.files?.length > 0 && <div className="message-files">{item.files.map((file) => <button type="button" key={file.id} onClick={() => downloadAttachment(file)}><AttachmentIcon /><span><b>{file.original_name}</b><small>{formatBytes(file.file_size)}</small></span></button>)}</div>}<div className="message-meta"><small>{new Date(item.created_at).toLocaleString()}</small>{item.sender_id !== user.id && <MarketplaceReportButton targetType="message" targetId={item.id} compact />}</div></article>)}
+              ? <p className="chat-system-event" key={item.id}>{item.body}<small>{formatDate(item.created_at, { dateStyle: 'medium', timeStyle: 'short' })}</small></p>
+              : <article className={item.sender_id === user.id ? 'sent' : ''} key={item.id}><p>{item.body}</p>{item.files?.length > 0 && <div className="message-files">{item.files.map((file) => <button type="button" key={file.id} onClick={() => downloadAttachment(file)}><AttachmentIcon /><span><b>{file.original_name}</b><small>{formatBytes(file.file_size)}</small></span></button>)}</div>}<div className="message-meta"><small>{formatDate(item.created_at, { dateStyle: 'medium', timeStyle: 'short' })}</small>{item.sender_id !== user.id && <MarketplaceReportButton targetType="message" targetId={item.id} compact />}</div></article>)}
           </div>
           <form className="chat-compose" onSubmit={send}>
-            {attachments.length > 0 && <div className="chat-attachment-list">{attachments.map((file, index) => <span key={`${file.name}-${file.lastModified}`}><AttachmentIcon />{file.name} <button type="button" onClick={() => removeAttachment(index)} aria-label={`Remove ${file.name}`}>×</button></span>)}</div>}
-            <div className="chat-compose-row"><textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength="4000" placeholder="Write a message…" aria-label="Message" /><label className="chat-attach" title="Attach files"><AttachmentIcon /><span>Attach</span><input ref={uploadInput} type="file" multiple accept={acceptedFiles} onChange={chooseAttachments} /></label><button disabled={busy || (!message.trim() && !attachments.length)} className="button button-primary">{busy ? 'Sending…' : 'Send'}</button></div><small className="chat-file-help">Up to 5 files · PDF, Office files, ZIP, text, CSV, or images · 20 MB each</small>
+            {attachments.length > 0 && <div className="chat-attachment-list">{attachments.map((file, index) => <span key={`${file.name}-${file.lastModified}`}><AttachmentIcon />{file.name} <button type="button" onClick={() => removeAttachment(index)} aria-label={t('messages.remove_file', `Remove ${file.name}`, { name: file.name })}>×</button></span>)}</div>}
+            <div className="chat-compose-row"><textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength="4000" placeholder={t('messages.write', 'Write a message...')} aria-label={t('nav.messages', 'Message')} /><label className="chat-attach" title={t('messages.attach_files', 'Attach files')}><AttachmentIcon /><span>{t('messages.attach', 'Attach')}</span><input ref={uploadInput} type="file" multiple accept={acceptedFiles} onChange={chooseAttachments} /></label><button disabled={busy || (!message.trim() && !attachments.length)} className="button button-primary">{busy ? t('messages.sending', 'Sending...') : t('messages.send', 'Send')}</button></div><small className="chat-file-help">{t('messages.file_help', 'Up to 5 files · PDF, Office files, ZIP, text, CSV, or images · 20 MB each')}</small>
           </form>
-        </> : <div className="chat-empty"><h2>Select a conversation</h2><p>Clients can start a chat with an active proposal. Freelancers can reply once invited.</p></div>}
+        </> : <div className="chat-empty"><h2>{t('messages.select', 'Select a conversation')}</h2><p>{t('messages.select_detail', 'Clients can start a chat with an active proposal. Freelancers can reply once invited.')}</p></div>}
       </main>
     </div>
   </section>

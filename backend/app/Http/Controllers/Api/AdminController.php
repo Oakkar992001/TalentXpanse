@@ -3,28 +3,30 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ClientProfile;
 use App\Models\Contract;
 use App\Models\ContractSupportRequest;
-use App\Models\ClientProfile;
 use App\Models\ConversationMessage;
 use App\Models\FreelancerProfile;
+use App\Models\IdentityVerificationSubmission;
 use App\Models\Job;
-use App\Models\MarketplaceReport;
-use App\Models\MarketplacePaymentRecord;
 use App\Models\MarketplaceAdminAuditLog;
+use App\Models\MarketplacePaymentRecord;
 use App\Models\MarketplaceReliabilityEvent;
+use App\Models\MarketplaceReport;
 use App\Models\Proposal;
 use App\Models\User;
+use App\Services\MarketplaceAdminAuditService;
+use App\Services\MarketplaceEscrowService;
 use App\Services\MarketplaceNotificationService;
 use App\Services\MarketplacePaymentSafetyService;
-use App\Services\MarketplaceEscrowService;
 use App\Services\MarketplacePaymentService;
-use App\Services\MarketplaceAdminAuditService;
 use App\Services\MarketplaceReliabilityService;
 use App\Services\ProposalCreditService;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class AdminController extends Controller
 {
@@ -35,7 +37,7 @@ class AdminController extends Controller
         return ['data' => [
             'users' => User::count(),
             'suspended_users' => User::where('status', 'suspended')->count(),
-            'pending_identity_verifications' => User::where('identity_verification_status', 'pending')->count(),
+            'pending_identity_verifications' => IdentityVerificationSubmission::where('status', 'pending')->count(),
             'pending_company_verifications' => ClientProfile::where('company_verification_status', 'pending')->count(),
             'open_jobs' => Job::where('status', 'open')->count(),
             'proposals' => Proposal::count(),
@@ -191,8 +193,8 @@ class AdminController extends Controller
     {
         $this->ensureAdmin($request);
 
-        $identity = User::query()->where('identity_verification_status', 'pending')->with('roles')->latest('identity_verification_requested_at')->get();
-        $identity->each(fn (User $user) => $user->makeVisible(['email']));
+        $identity = IdentityVerificationSubmission::query()->where('status', 'pending')->with('user.roles')->latest('submitted_at')->get();
+        $identity->each(fn (IdentityVerificationSubmission $submission) => $submission->user?->makeVisible(['email']));
         $companies = ClientProfile::query()->where('company_verification_status', 'pending')->with('user')->latest('company_verification_requested_at')->get();
         $companies->each(fn (ClientProfile $profile) => $profile->user?->makeVisible(['email']));
 
@@ -209,7 +211,8 @@ class AdminController extends Controller
             'status' => ['required', Rule::in(['verified', 'rejected'])],
             'note' => ['nullable', 'string', 'max:1000'],
         ]);
-        abort_unless($user->identity_verification_status === 'pending', 422, 'This identity verification is not awaiting review.');
+        $submission = $user->identityVerificationSubmissions()->where('status', 'pending')->latest('submitted_at')->first();
+        abort_unless($submission, 422, 'This identity verification is not awaiting review.');
         abort_if($data['status'] === 'rejected' && blank($data['note'] ?? null), 422, 'Add a clear reason when rejecting a verification request.');
         $user->update([
             'identity_verification_status' => $data['status'],
@@ -217,10 +220,17 @@ class AdminController extends Controller
             'identity_verified_at' => $data['status'] === 'verified' ? now() : null,
             'identity_verified_by' => $request->user()->id,
         ]);
+        $submission->update([
+            'status' => $data['status'],
+            'review_note' => $data['note'] ?? null,
+            'reviewed_by' => $request->user()->id,
+            'reviewed_at' => now(),
+        ]);
+        $this->purgeIdentityDocuments($submission);
         if ($data['status'] === 'verified') {
             $user->roles()->pluck('name')->filter(fn (string $role) => in_array($role, ['client', 'freelancer'], true))->each(fn (string $role) => $reliability->recordVerification($user, $role, 'identity', $user->id));
         }
-        $audit->log($request->user(), "identity_verification.{$data['status']}", $user, $data['note'] ?? "Identity verification {$data['status']}.", ['status' => $data['status']]);
+        $audit->log($request->user(), "identity_verification.{$data['status']}", $user, $data['note'] ?? "Identity verification {$data['status']}.", ['status' => $data['status'], 'identity_verification_submission_id' => $submission->id]);
         $notifications->send($user, 'identity_verification_updated', 'Identity verification updated', $data['status'] === 'verified' ? 'Your identity verification is complete.' : 'Your identity verification request needs attention. Review the note in Settings.', '/settings');
 
         return ['data' => $user->fresh('roles')->makeVisible([
@@ -231,6 +241,24 @@ class AdminController extends Controller
             'identity_verified_at',
             'identity_verified_by',
         ])];
+    }
+
+    public function downloadIdentityVerificationDocument(Request $request, IdentityVerificationSubmission $identityVerificationSubmission, string $side, MarketplaceAdminAuditService $audit)
+    {
+        $this->ensureAdmin($request);
+        abort_unless(in_array($side, ['front', 'back'], true), 404);
+        abort_unless($identityVerificationSubmission->status === 'pending' && ! $identityVerificationSubmission->documents_purged_at, 404, 'This identity document is no longer available.');
+
+        $path = $side === 'front' ? $identityVerificationSubmission->nrc_front_path : $identityVerificationSubmission->nrc_back_path;
+        abort_unless($path && Storage::disk('local')->exists($path), 404, 'This identity document is no longer available.');
+
+        $extension = pathinfo($path, PATHINFO_EXTENSION) ?: 'jpg';
+        $audit->log($request->user(), 'identity_verification.document_accessed', $identityVerificationSubmission, "Opened identity document {$side} for review.", ['side' => $side]);
+
+        return Storage::disk('local')->response($path, "identity-document-{$side}.{$extension}", [
+            'Cache-Control' => 'no-store, private',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     public function updateCompanyVerification(Request $request, ClientProfile $clientProfile, MarketplaceNotificationService $notifications, MarketplaceAdminAuditService $audit, MarketplaceReliabilityService $reliability)
@@ -325,6 +353,21 @@ class AdminController extends Controller
     private function ensureAdmin(Request $request): void
     {
         abort_unless($request->user()->hasRole('admin'), 403, 'Administrator access is required.');
+    }
+
+    private function purgeIdentityDocuments(IdentityVerificationSubmission $submission): void
+    {
+        foreach ([$submission->nrc_front_path, $submission->nrc_back_path] as $path) {
+            if ($path && Storage::disk('local')->exists($path)) {
+                Storage::disk('local')->delete($path);
+            }
+        }
+
+        $submission->update([
+            'nrc_front_path' => null,
+            'nrc_back_path' => null,
+            'documents_purged_at' => now(),
+        ]);
     }
 
     private function reliabilityTarget(MarketplaceReport $report): array

@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Services\TrustSummaryService;
 use App\Services\MarketplaceReliabilityService;
+use App\Services\TrustSummaryService;
 
 class PublicFreelancerController extends Controller
 {
@@ -22,6 +22,7 @@ class PublicFreelancerController extends Controller
             'freelancer_profile' => [
                 'id' => $profile->id,
                 'title' => $profile->title,
+                'experience_level' => $profile->experience_level,
                 'bio' => $profile->bio,
                 'hourly_rate' => $profile->hourly_rate,
                 'availability' => $profile->availability,

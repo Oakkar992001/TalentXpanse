@@ -12,7 +12,7 @@ return [
         Sanctum::currentApplicationUrlWithPort(),
     ))),
     'guard' => ['web'],
-    'expiration' => null,
+    'expiration' => max(1, (int) env('MARKETPLACE_MEMBER_SESSION_MINUTES', 480)),
     'token_prefix' => env('SANCTUM_TOKEN_PREFIX', ''),
     'middleware' => [
         'authenticate_session' => AuthenticateSession::class,

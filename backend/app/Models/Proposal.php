@@ -47,4 +47,9 @@ class Proposal extends Model
     {
         return $this->hasOne(ProposalOffer::class)->latestOfMany();
     }
+
+    public function creditAllocations()
+    {
+        return $this->hasMany(ProposalCreditAllocation::class);
+    }
 }

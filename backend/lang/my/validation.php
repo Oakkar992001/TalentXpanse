@@ -1,0 +1,43 @@
+<?php
+
+return [
+    'accepted' => ':attribute ကို သဘောတူရပါမည်။',
+    'array' => ':attribute သည် စာရင်းပုံစံ ဖြစ်ရပါမည်။',
+    'boolean' => ':attribute သည် မှန် သို့မဟုတ် မှား ဖြစ်ရပါမည်။',
+    'confirmed' => ':attribute အတည်ပြုချက် မကိုက်ညီပါ။',
+    'email' => ':attribute သည် မှန်ကန်သော အီးမေးလ်လိပ်စာ ဖြစ်ရပါမည်။',
+    'in' => 'ရွေးချယ်ထားသော :attribute မမှန်ကန်ပါ။',
+    'integer' => ':attribute သည် ကိန်းပြည့် ဖြစ်ရပါမည်။',
+    'max' => [
+        'numeric' => ':attribute သည် :max ထက် မကျော်ရပါ။',
+        'file' => ':attribute သည် :max ကီလိုဘိုက်ထက် မကျော်ရပါ။',
+        'string' => ':attribute သည် စာလုံး :max ထက် မကျော်ရပါ။',
+        'array' => ':attribute တွင် :max ခုထက် မပိုရပါ။',
+    ],
+    'min' => [
+        'numeric' => ':attribute သည် အနည်းဆုံး :min ဖြစ်ရပါမည်။',
+        'file' => ':attribute သည် အနည်းဆုံး :min ကီလိုဘိုက် ဖြစ်ရပါမည်။',
+        'string' => ':attribute သည် အနည်းဆုံး စာလုံး :min လုံး ဖြစ်ရပါမည်။',
+        'array' => ':attribute တွင် အနည်းဆုံး :min ခု ပါရပါမည်။',
+    ],
+    'numeric' => ':attribute သည် ကိန်းဂဏန်း ဖြစ်ရပါမည်။',
+    'required' => ':attribute လိုအပ်ပါသည်။',
+    'string' => ':attribute သည် စာသား ဖြစ်ရပါမည်။',
+    'unique' => 'ဤ :attribute ကို အသုံးပြုပြီးသား ဖြစ်ပါသည်။',
+    'url' => ':attribute သည် မှန်ကန်သော လင့်ခ် ဖြစ်ရပါမည်။',
+    'attributes' => [
+        'name' => 'အမည်',
+        'email' => 'အီးမေးလ်',
+        'password' => 'စကားဝှက်',
+        'password_confirmation' => 'စကားဝှက်အတည်ပြုချက်',
+        'role' => 'အခန်းကဏ္ဍ',
+        'title' => 'ခေါင်းစဉ်',
+        'description' => 'ဖော်ပြချက်',
+        'category' => 'အမျိုးအစား',
+        'budget_min' => 'အနည်းဆုံးဘတ်ဂျက်',
+        'budget_max' => 'အများဆုံးဘတ်ဂျက်',
+        'cover_letter' => 'အဆိုပြုလွှာ',
+        'bid_amount' => 'လေလံပမာဏ',
+        'delivery_days' => 'ပေးပို့ရက်',
+    ],
+];

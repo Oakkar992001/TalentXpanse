@@ -49,7 +49,7 @@ class AuthController extends Controller
         $user->sendEmailVerificationNotification();
 
         return response()->json([
-            'token' => $user->createToken('talentxpanse-web', ['web'])->plainTextToken,
+            ...$this->issueToken($user, 'talentxpanse-web', ['web'], 'member'),
             'user' => $this->userPayload($user->fresh('roles', 'freelancerProfile', 'clientProfile')),
         ], 201);
     }
@@ -64,14 +64,14 @@ class AuthController extends Controller
         $user = User::where('email', $data['email'])->first();
 
         if (! $user || ! Hash::check($data['password'], $user->password)) {
-            return response()->json(['message' => 'The email or password is incorrect.'], 422);
+            return response()->json(['message' => __('The email or password is incorrect.')], 422);
         }
         if ($user->status === 'suspended') {
-            return response()->json(['message' => 'This account has been suspended.'], 403);
+            return response()->json(['message' => __('This account has been suspended.')], 403);
         }
 
         return response()->json([
-            'token' => $user->createToken('talentxpanse-web', ['web'])->plainTextToken,
+            ...$this->issueToken($user, 'talentxpanse-web', ['web'], 'member'),
             'user' => $this->userPayload($user->load('roles', 'freelancerProfile', 'clientProfile')),
         ]);
     }
@@ -85,14 +85,14 @@ class AuthController extends Controller
         $user = User::where('email', $data['email'])->with('roles')->first();
 
         if (! $user || ! Hash::check($data['password'], $user->password) || ! $user->hasRole('admin')) {
-            return response()->json(['message' => 'Administrator credentials are not valid.'], 422);
+            return response()->json(['message' => __('Administrator credentials are not valid.')], 422);
         }
         if ($user->status === 'suspended') {
-            return response()->json(['message' => 'This administrator account has been suspended.'], 403);
+            return response()->json(['message' => __('This administrator account has been suspended.')], 403);
         }
 
         return response()->json([
-            'token' => $user->createToken('talentxpanse-admin', ['admin'])->plainTextToken,
+            ...$this->issueToken($user, 'talentxpanse-admin', ['admin'], 'admin'),
             'user' => $this->userPayload($user->load('freelancerProfile', 'clientProfile')),
         ]);
     }
@@ -140,10 +140,10 @@ class AuthController extends Controller
 
             return $user;
         });
-        abort_if($user->status === 'suspended', 403, 'This account has been suspended.');
+        abort_if($user->status === 'suspended', 403, __('This account has been suspended.'));
 
         return response()->json([
-            'token' => $user->createToken('talentxpanse-google', ['web'])->plainTextToken,
+            ...$this->issueToken($user, 'talentxpanse-google', ['web'], 'member'),
             'user' => $this->userPayload($user->fresh('roles', 'freelancerProfile', 'clientProfile')),
         ]);
     }
@@ -194,6 +194,18 @@ class AuthController extends Controller
         }
     }
 
+    private function issueToken(User $user, string $name, array $abilities, string $sessionType): array
+    {
+        $minutes = (int) config("marketplace_sessions.{$sessionType}_minutes");
+        $expiresAt = now()->addMinutes($minutes);
+        $token = $user->createToken($name, $abilities, $expiresAt);
+
+        return [
+            'token' => $token->plainTextToken,
+            'expires_at' => $expiresAt->toISOString(),
+        ];
+    }
+
     private function userPayload(User $user): array
     {
         $roles = $user->roles->pluck('name')->values();
@@ -220,7 +232,7 @@ class AuthController extends Controller
     {
         $parts = explode('.', $credential);
         if (count($parts) !== 3) {
-            throw ValidationException::withMessages(['credential' => 'Google returned an invalid sign-in token.']);
+            throw ValidationException::withMessages(['credential' => __('Google returned an invalid sign-in token.')]);
         }
 
         [$encodedHeader, $encodedPayload, $encodedSignature] = $parts;
@@ -229,7 +241,7 @@ class AuthController extends Controller
         $signature = $this->base64UrlDecode($encodedSignature);
 
         if (! is_array($header) || ! is_array($claims) || ($header['alg'] ?? null) !== 'RS256' || empty($header['kid'])) {
-            throw ValidationException::withMessages(['credential' => 'Google returned an invalid sign-in token.']);
+            throw ValidationException::withMessages(['credential' => __('Google returned an invalid sign-in token.')]);
         }
 
         $key = $this->googleKeys()->firstWhere('kid', $header['kid']);
@@ -239,7 +251,7 @@ class AuthController extends Controller
         }
 
         if (! $key || openssl_verify("{$encodedHeader}.{$encodedPayload}", $signature, $this->jwkToPem($key), OPENSSL_ALGO_SHA256) !== 1) {
-            throw ValidationException::withMessages(['credential' => 'Google could not verify this sign-in token.']);
+            throw ValidationException::withMessages(['credential' => __('Google could not verify this sign-in token.')]);
         }
 
         $audience = config('services.google.client_id');
@@ -253,7 +265,7 @@ class AuthController extends Controller
             || empty($claims['sub'])
             || empty($claims['email'])
             || ! $isVerifiedEmail) {
-            throw ValidationException::withMessages(['credential' => 'Google returned a token that is not valid for TalentXpanse.']);
+            throw ValidationException::withMessages(['credential' => __('Google returned a token that is not valid for TalentXpanse.')]);
         }
 
         return $claims;

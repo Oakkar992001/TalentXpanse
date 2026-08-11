@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ['prefix' => 'api', 'middleware' => ['api', 'auth:sanctum', 'account.active']],
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->appendToGroup('api', \App\Http\Middleware\SetRequestLocale::class);
         $middleware->alias([
             'account.active' => \App\Http\Middleware\EnsureActiveAccount::class,
             'ability' => \Laravel\Sanctum\Http\Middleware\CheckAbilities::class,

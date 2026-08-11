@@ -36,7 +36,7 @@ class ContractReviewController extends Controller
         $reliability->recordPositiveReview($review->load('reviewedUser'), $contract);
 
         $this->event($contract, 'review_submitted', "{$request->user()->name} submitted a project review.");
-        $notifications->send($reviewedUserId, 'review_submitted', 'A project review was submitted', 'Your review remains private until you submit yours or the 14-day window ends.', "/projects/{$contract->id}");
+        $notifications->send($reviewedUserId, 'review_submitted', 'A project review was submitted', 'Your review remains private until you submit yours or the 14-day window ends.', "/projects/{$contract->id}?focus=reviews");
 
         return response()->json(['data' => $review], 201);
     }

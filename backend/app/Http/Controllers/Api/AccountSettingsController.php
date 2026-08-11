@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\MarketplaceReliabilityService;
 use App\Services\ProfileReadinessService;
 use App\Services\TrustSummaryService;
-use App\Services\MarketplaceReliabilityService;
 use Illuminate\Http\Request;
 
 class AccountSettingsController extends Controller
@@ -51,6 +51,7 @@ class AccountSettingsController extends Controller
             'identity_verification_status' => $user->identity_verification_status,
             'identity_verification_note' => $user->identity_verification_note,
             'identity_verification_requested_at' => $user->identity_verification_requested_at,
+            'identity_verification_submission_pending' => $user->identityVerificationSubmissions()->where('status', 'pending')->exists(),
             'active_role' => $activeRole,
             'roles' => $roles,
             'freelancer_profile' => $user->freelancerProfile,

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Job;
 use App\Models\Proposal;
 use App\Models\ProposalCreditAccount;
+use App\Models\ProposalCreditAllocation;
 use App\Models\ProposalCreditGrant;
 use App\Models\ProposalCreditTransaction;
 use App\Models\User;
@@ -63,13 +64,20 @@ class ProposalCreditService
             }
 
             $remainingToSpend = $cost;
-            $this->spendableGrants($account)->each(function (ProposalCreditGrant $grant) use (&$remainingToSpend) {
+            $this->spendableGrants($account)->each(function (ProposalCreditGrant $grant) use (&$remainingToSpend, $proposal) {
                 if ($remainingToSpend === 0) {
                     return false;
                 }
 
                 $amount = min($remainingToSpend, $grant->remaining_amount);
                 $grant->decrement('remaining_amount', $amount);
+                if ($proposal && $amount > 0) {
+                    ProposalCreditAllocation::create([
+                        'proposal_id' => $proposal->id,
+                        'proposal_credit_grant_id' => $grant->id,
+                        'amount' => $amount,
+                    ]);
+                }
                 $remainingToSpend -= $amount;
             });
 
@@ -99,6 +107,7 @@ class ProposalCreditService
 
         $job->proposals()
             ->where('credit_cost', '>', 0)
+            ->whereIn('status', ['submitted', 'shortlisted', 'interviewing', 'offered'])
             ->with('freelancer')
             ->get()
             ->each(fn (Proposal $proposal) => $this->refundProposal($proposal));
@@ -160,29 +169,45 @@ class ProposalCreditService
                 return;
             }
 
+            $allocations = $proposal->creditAllocations()
+                ->with('proposalCreditGrant')
+                ->get();
+
+            if ($allocations->isEmpty()) {
+                return;
+            }
+
             $account = $this->lockedAccount($proposal->freelancer);
             $this->prepareAccount($account);
-            $grant = ProposalCreditGrant::create([
-                'user_id' => $proposal->freelancer_id,
-                'proposal_id' => $proposal->id,
-                'source' => 'proposal_refund',
-                'initial_amount' => $proposal->credit_cost,
-                'remaining_amount' => $proposal->credit_cost,
-                'granted_at' => now(),
-                'expires_at' => now()->addDays(self::FREE_EXPIRY_DAYS),
-                'reference' => "Job {$proposal->job_id} cancelled before hire",
-            ]);
-            $balance = $this->syncBalance($account);
+            $refunds = $allocations
+                ->filter(fn (ProposalCreditAllocation $allocation) => ! $allocation->proposalCreditGrant?->expires_at || $allocation->proposalCreditGrant->expires_at->isFuture())
+                ->map(function (ProposalCreditAllocation $allocation) use ($proposal) {
+                    return ProposalCreditGrant::create([
+                        'user_id' => $proposal->freelancer_id,
+                        'proposal_id' => $proposal->id,
+                        'source' => 'proposal_refund',
+                        'initial_amount' => $allocation->amount,
+                        'remaining_amount' => $allocation->amount,
+                        'granted_at' => now(),
+                        'expires_at' => $allocation->proposalCreditGrant?->expires_at,
+                        'reference' => "Job {$proposal->job_id} cancelled before hire; original expiry retained",
+                    ]);
+                });
 
-            ProposalCreditTransaction::create([
+            if ($refunds->isEmpty()) {
+                return;
+            }
+
+            $balance = $this->syncBalance($account);
+            $refunds->each(fn (ProposalCreditGrant $grant) => ProposalCreditTransaction::create([
                 'user_id' => $proposal->freelancer_id,
                 'proposal_id' => $proposal->id,
                 'proposal_credit_grant_id' => $grant->id,
                 'type' => 'proposal_refund',
-                'amount' => $proposal->credit_cost,
+                'amount' => $grant->initial_amount,
                 'balance_after' => $balance,
-                'description' => 'Proposal credits returned because the client cancelled the job before hiring.',
-            ]);
+                'description' => 'Proposal credits returned because the client cancelled the job before hiring. Original expiry retained.',
+            ]));
         });
     }
 

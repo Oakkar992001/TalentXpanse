@@ -4,6 +4,7 @@ import { PreferencesProvider } from './contexts/PreferencesContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { NotificationProvider } from './contexts/NotificationContext'
 import { ConfirmProvider } from './contexts/ConfirmContext'
+import { usePreferences } from './contexts/PreferencesContext'
 import AppErrorBoundary from './components/AppErrorBoundary'
 
 const AppLayout = lazy(() => import('./layouts/AppLayout'))
@@ -28,13 +29,15 @@ const AdminDashboardScreen = lazy(() => import('./pages/Admin').then((module) =>
 const AdminLoginScreen = lazy(() => import('./pages/Admin').then((module) => ({ default: module.AdminLoginScreen })))
 
 function RouteFallback() {
-  return <main className="route-loading" role="status" aria-live="polite">Loading page...</main>
+  const { t } = usePreferences()
+  return <main className="route-loading" role="status" aria-live="polite">{t('route.loading_page', 'Loading page...')}</main>
 }
 
 function GuestOnly({ children, redirectTo }) {
   const { user, loading } = useAuth()
+  const { t } = usePreferences()
 
-  if (loading) return <main className="route-loading" aria-live="polite">Loading your workspace...</main>
+  if (loading) return <main className="route-loading" aria-live="polite">{t('route.loading_workspace', 'Loading your workspace...')}</main>
   if (!user) return children
 
   const destination = typeof redirectTo === 'function'
@@ -57,8 +60,9 @@ function GuestFreelancerProfile() {
 function RequireAuth() {
   const { user, loading } = useAuth()
   const layoutContext = useOutletContext()
+  const { t } = usePreferences()
 
-  if (loading) return <main className="route-loading" aria-live="polite">Loading your workspace...</main>
+  if (loading) return <main className="route-loading" aria-live="polite">{t('route.loading_workspace', 'Loading your workspace...')}</main>
   if (!user) return <Navigate to="/login" replace />
 
   return <Outlet context={layoutContext} />

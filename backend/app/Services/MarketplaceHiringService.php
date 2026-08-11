@@ -29,6 +29,10 @@ class MarketplaceHiringService
 
             $job->update(['status' => 'in_progress']);
             $selected->update(['status' => 'hired']);
+            $notSelected = $job->proposals()
+                ->whereKeyNot($selected->id)
+                ->whereIn('status', ['submitted', 'shortlisted', 'interviewing', 'offered'])
+                ->get(['id', 'freelancer_id']);
             $job->proposals()
                 ->whereKeyNot($selected->id)
                 ->whereIn('status', ['submitted', 'shortlisted', 'interviewing', 'offered'])
@@ -80,6 +84,7 @@ class MarketplaceHiringService
             ], ['body' => $lockedOffer ? 'Offer accepted. The contract and agreed milestones are ready.' : 'Contract started. The client can now create delivery milestones.']);
             $conversation->update(['last_message_at' => now()]);
             $notifications->send($selected->freelancer_id, 'proposal_hired', 'You were hired', "You were hired for {$job->title}. Open the project to review the delivery plan.", "/projects/{$contract->id}");
+            $notSelected->each(fn (Proposal $candidate) => $notifications->send($candidate->freelancer_id, 'proposal_not_selected', 'Client selected another freelancer', "The client selected another freelancer for {$job->title}. Your Proposal Credits are not returned after a submitted application.", '/work?role=freelancer'));
 
             return $contract;
         });

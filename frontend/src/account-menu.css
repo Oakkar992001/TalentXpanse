@@ -1,5 +1,24 @@
 .account-menu { position:relative; }.account-trigger { display:flex; width:100%; align-items:center; gap:9px; padding:6px 5px; border:0; border-radius:8px; background:transparent; color:var(--text); font:inherit; text-align:left; }.account-trigger:hover { background:var(--nav-hover); }.account-trigger em { flex:1; overflow:hidden; font-size:12px; font-style:normal; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }.account-trigger i { color:var(--muted); font-style:normal; }.account-popover { position:absolute; z-index:30; bottom:calc(100% + 9px); left:0; width:274px; overflow:hidden; border:1px solid var(--line); border-radius:12px; background:var(--surface); box-shadow:var(--shadow); }.account-popover header { display:flex; gap:10px; padding:15px; border-bottom:1px solid var(--line); }.account-popover header > span { display:grid; place-items:center; width:34px; height:34px; overflow:hidden; border-radius:50%; background:var(--surface-tint); color:var(--brand); font-size:12px; font-weight:800; }.account-popover header img { width:100%; height:100%; object-fit:cover; }.account-popover header b, .account-popover header small, .account-popover header em { display:block; }.account-popover header b { font-size:12px; }.account-popover header small { overflow:hidden; max-width:180px; margin-top:2px; color:var(--muted); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }.account-popover header em { width:max-content; margin-top:5px; padding:3px 5px; border-radius:5px; background:var(--surface-tint); color:var(--brand); font-size:9px; font-style:normal; font-weight:700; }.account-links, .account-switch { display:grid; padding:6px; }.account-links button, .account-switch button, .account-logout { border:0; border-radius:7px; background:transparent; color:var(--text); padding:9px; font:inherit; font-size:12px; text-align:left; }.account-links button:hover, .account-switch button:hover { background:var(--nav-hover); }.account-switch { border-top:1px solid var(--line); }.account-switch small { padding:4px 9px; color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.06em; }.account-logout { display:block; width:100%; border-top:1px solid var(--line); border-radius:0; color:#d34b4b; font-weight:700; }.account-error { margin:8px; padding:8px; border-radius:6px; background:rgba(211,75,75,.1); color:#bd3a3a; font-size:10px; }
 .account-menu-top .account-trigger { width:auto; }.account-menu-top .account-trigger em { display:none; }.account-menu-top .account-popover { top:calc(100% + 9px); right:0; bottom:auto; left:auto; }
 .mobile-account { display:none; }
+
+/* In the expanded sidebar, the trigger already identifies the user. Keep the
+   opened panel small and focused on actions rather than repeating the profile. */
+.dashboard-sidebar .account-menu-compact .account-popover { box-sizing:border-box; right:0; bottom:calc(100% + 8px); left:auto; width:100%; }
+.account-menu-compact .account-links { padding:5px; }
+.account-menu-compact .account-links button { min-height:36px; padding:8px 9px; }
+.account-menu-compact .account-logout { min-height:39px; }
+
+/* A collapsed desktop rail must not clip the account menu. Keep the trigger in
+   the rail and open its menu into the workspace beside it. */
+@media (min-width:761px) {
+  .sidebar-collapsed .dashboard-sidebar { overflow:visible; }
+  .sidebar-collapsed .sidebar-bottom { position:relative; width:100%; }
+  .sidebar-collapsed .account-menu { width:100%; }
+  .sidebar-collapsed .account-trigger { justify-content:center; padding-left:0; padding-right:0; }
+  .sidebar-collapsed .account-trigger i { display:none; }
+  .sidebar-collapsed .account-popover { bottom:0; left:calc(100% + 14px); }
+}
+
 @media (max-width:760px) { .mobile-account { display:block; }.mobile-account .account-trigger { min-height:36px; gap:6px; padding:3px 7px; border:1px solid var(--line); background:var(--surface); }.mobile-account .sidebar-avatar { width:27px; height:27px; font-size:10px; }.mobile-account .account-trigger em { display:block; flex:0 1 auto; max-width:92px; }.mobile-account .account-trigger i { font-size:12px; }.mobile-account .account-popover { position:fixed; top:calc(60px + env(safe-area-inset-top)); right:12px; bottom:auto; left:auto; width:min(274px, calc(100vw - 24px)); } }
 @media (max-width:600px) { .mobile-account .account-trigger em, .mobile-account .account-trigger i { display:none; }.mobile-account .account-trigger { width:36px; justify-content:center; padding:3px; } }

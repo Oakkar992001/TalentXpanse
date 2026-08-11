@@ -1,7 +1,9 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import api from '../services/api'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import api, { SESSION_EXPIRED_EVENT } from '../services/api'
 
 const AuthContext = createContext(null)
+const tokenKey = 'tx-token'
+const tokenExpiryKey = 'tx-token-expires-at'
 
 function messageFrom(error) {
   const errors = error.response?.data?.errors
@@ -12,20 +14,64 @@ function messageFrom(error) {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [sessionExpiresAt, setSessionExpiresAt] = useState(() => localStorage.getItem(tokenExpiryKey))
+  const [sessionExpired, setSessionExpired] = useState(false)
 
-  useEffect(() => {
-    if (!localStorage.getItem('tx-token')) { setLoading(false); return }
-    api.get('/auth/user').then(({ data }) => setUser(data.user)).catch(() => localStorage.removeItem('tx-token')).finally(() => setLoading(false))
+  const clearAuthentication = useCallback(() => {
+    localStorage.removeItem(tokenKey)
+    localStorage.removeItem(tokenExpiryKey)
+    setUser(null)
+    setSessionExpiresAt(null)
   }, [])
 
-  const finishAuth = ({ token, user: authenticatedUser }) => {
-    localStorage.setItem('tx-token', token)
+  const expireSession = useCallback(() => {
+    clearAuthentication()
+    setSessionExpired(true)
+  }, [clearAuthentication])
+
+  useEffect(() => {
+    const token = localStorage.getItem(tokenKey)
+    const expiresAt = localStorage.getItem(tokenExpiryKey)
+    if (!token) { setLoading(false); return }
+    if (expiresAt && Date.parse(expiresAt) <= Date.now()) {
+      expireSession()
+      setLoading(false)
+      return
+    }
+    api.get('/auth/user').then(({ data }) => setUser(data.user)).catch((error) => {
+      if (error.response?.status === 401) expireSession()
+      else clearAuthentication()
+    }).finally(() => setLoading(false))
+  }, [clearAuthentication, expireSession])
+
+  useEffect(() => {
+    window.addEventListener(SESSION_EXPIRED_EVENT, expireSession)
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, expireSession)
+  }, [expireSession])
+
+  useEffect(() => {
+    if (!user || !sessionExpiresAt) return undefined
+    const delay = Date.parse(sessionExpiresAt) - Date.now()
+    if (delay <= 0) {
+      expireSession()
+      return undefined
+    }
+    const timeout = window.setTimeout(expireSession, delay)
+    return () => window.clearTimeout(timeout)
+  }, [expireSession, sessionExpiresAt, user])
+
+  const finishAuth = ({ token, expires_at: expiresAt, user: authenticatedUser }) => {
+    localStorage.setItem(tokenKey, token)
+    if (expiresAt) localStorage.setItem(tokenExpiryKey, expiresAt)
+    else localStorage.removeItem(tokenExpiryKey)
     setUser(authenticatedUser)
+    setSessionExpiresAt(expiresAt || null)
+    setSessionExpired(false)
     return authenticatedUser
   }
 
   const value = useMemo(() => ({
-    user, loading,
+    user, loading, sessionExpired,
     refreshUser: async () => {
       const { data } = await api.get('/auth/user')
       setUser(data.user)
@@ -46,10 +92,10 @@ export function AuthProvider({ children }) {
       return data.user
     },
     logout: async () => {
-      try { await api.post('/auth/logout') } finally { localStorage.removeItem('tx-token'); setUser(null) }
+      try { await api.post('/auth/logout') } finally { clearAuthentication(); setSessionExpired(false) }
     },
     errorMessage: messageFrom,
-  }), [user, loading])
+  }), [clearAuthentication, loading, sessionExpired, user])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

@@ -30,7 +30,7 @@ class MilestoneSubmissionController extends Controller
 
         $submission = $submissions->submit($milestone, $request->user(), $data['note'] ?? null, $request->file('files', []));
         $this->event($contract, "Delivery submitted for review: {$milestone->title} (version {$submission->version})");
-        $notifications->send($contract->client_id, 'milestone_submitted', 'Milestone ready for review', "{$milestone->title} delivery version {$submission->version} was submitted for your review.", "/projects/{$contract->id}");
+        $notifications->send($contract->client_id, 'milestone_submitted', 'Milestone ready for review', "{$milestone->title} delivery version {$submission->version} was submitted for your review.", "/projects/{$contract->id}?milestone={$milestone->id}&focus=milestone");
 
         return response()->json(['data' => $submission], 201);
     }

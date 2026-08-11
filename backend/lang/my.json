@@ -1,0 +1,9 @@
+{
+  "The email or password is incorrect.": "အီးမေးလ် သို့မဟုတ် စကားဝှက် မမှန်ကန်ပါ။",
+  "This account has been suspended.": "ဤအကောင့်ကို ယာယီရပ်ဆိုင်းထားပါသည်။",
+  "Administrator credentials are not valid.": "စီမံခန့်ခွဲသူ အကောင့်အချက်အလက်များ မမှန်ကန်ပါ။",
+  "This administrator account has been suspended.": "ဤစီမံခန့်ခွဲသူအကောင့်ကို ယာယီရပ်ဆိုင်းထားပါသည်။",
+  "Google returned an invalid sign-in token.": "Google မှ မမှန်ကန်သော အကောင့်ဝင်အချက်အလက်ကို ပြန်လည်ပေးပို့ခဲ့ပါသည်။",
+  "Google could not verify this sign-in token.": "Google အကောင့်ဝင်အချက်အလက်ကို အတည်မပြုနိုင်ပါ။",
+  "Google returned a token that is not valid for TalentXpanse.": "Google အကောင့်ဝင်အချက်အလက်သည် TalentXpanse အတွက် မမှန်ကန်ပါ။"
+}

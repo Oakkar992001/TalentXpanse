@@ -156,6 +156,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->belongsTo(self::class, 'identity_verified_by');
     }
 
+    public function identityVerificationSubmissions()
+    {
+        return $this->hasMany(IdentityVerificationSubmission::class);
+    }
+
     public function portfolioItems()
     {
         return $this->hasMany(PortfolioItem::class)->orderBy('sort_order')->latest('id');

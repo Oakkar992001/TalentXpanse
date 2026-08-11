@@ -6,7 +6,15 @@ import { useConfirmation } from '../contexts/ConfirmContext'
 import '../work-management.css'
 
 const money = (value) => `Ks ${Number(value || 0).toLocaleString()}`
-const label = (value) => String(value || '').replaceAll('_', ' ')
+const label = (value) => ({
+  submitted: 'Submitted',
+  shortlisted: 'Shortlisted',
+  interviewing: 'Interviewing',
+  offered: 'Offer received',
+  hired: 'Hired',
+  declined: 'Not selected',
+  withdrawn: 'Withdrawn',
+}[value] || String(value || '').replaceAll('_', ' '))
 const offerExpiryText = (offer) => {
   if (!offer?.expires_at) return null
   const expiresAt = new Date(offer.expires_at)
@@ -82,6 +90,7 @@ function FreelancerProposalCard({ proposal, busy, onWithdraw, onRespondOffer, co
         {proposal.status === 'hired' && contractId && <Link className="button button-primary" to={`/projects/${contractId}`}>Open project</Link>}
         {canWithdraw && <button className="danger-action" disabled={busy === `proposal-${proposal.id}`} onClick={() => onWithdraw(proposal)}>Withdraw proposal</button>}
         {proposal.status === 'withdrawn' && <small className="work-note">Proposal Credits are not returned after withdrawal.</small>}
+        {proposal.status === 'declined' && !proposal.decline_reason && <small className="work-note">The client selected another freelancer. Proposal Credits are not returned after a submitted application.</small>}
       </div>
     </footer>
   </article>
@@ -125,7 +134,7 @@ export default function WorkManagementScreen() {
     const action = status === 'closed' ? 'close' : status === 'paused' ? 'pause' : 'reopen'
     if (!await confirm({
       title: `${action[0].toUpperCase()}${action.slice(1)} “${job.title}”?`,
-      message: status === 'closed' ? 'This job will stop accepting proposals. Keep it open only if you are still reviewing candidates.' : `You can ${status === 'paused' ? 'reopen' : 'pause'} this job again later.`,
+      message: status === 'closed' ? 'This job will stop accepting proposals. Active applicants receive their Proposal Credits back because no freelancer was hired.' : `You can ${status === 'paused' ? 'reopen' : 'pause'} this job again later.`,
       confirmLabel: `${action[0].toUpperCase()}${action.slice(1)} job`,
       tone: status === 'closed' ? 'danger' : 'neutral',
     })) return
@@ -144,7 +153,7 @@ export default function WorkManagementScreen() {
   }
 
   const withdraw = async (proposal) => {
-    if (!await confirm({ title: `Withdraw your proposal for “${proposal.job?.title}”?`, message: 'The client will be notified. Proposal Credits are not returned after withdrawal.', confirmLabel: 'Withdraw proposal' })) return
+    if (!await confirm({ title: `Withdraw your proposal for “${proposal.job?.title}”?`, message: 'You can withdraw while the client is reviewing your proposal. The client will be notified, and Proposal Credits are not returned.', confirmLabel: 'Withdraw proposal' })) return
     setBusy(`proposal-${proposal.id}`)
     setError('')
     setNotice('')

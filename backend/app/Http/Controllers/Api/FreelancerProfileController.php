@@ -7,6 +7,7 @@ use App\Models\FreelancerProfile;
 use App\Services\ProfileReadinessService;
 use App\Services\TrustSummaryService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class FreelancerProfileController extends Controller
 {
@@ -22,6 +23,7 @@ class FreelancerProfileController extends Controller
         $this->ensureFreelancer($request);
         $data = $request->validate([
             'title' => ['nullable', 'string', 'max:120'],
+            'experience_level' => ['nullable', Rule::in(['entry', 'intermediate', 'expert'])],
             'bio' => ['nullable', 'string', 'max:2500'],
             'hourly_rate' => ['nullable', 'integer', 'min:0', 'max:10000000'],
             'availability' => ['sometimes', 'boolean'],

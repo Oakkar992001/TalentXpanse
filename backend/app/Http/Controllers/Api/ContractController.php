@@ -54,7 +54,7 @@ class ContractController extends Controller
             'funding_status' => $payments->gatewayConfigured() ? 'awaiting_funding' : 'not_configured',
         ]);
         $this->event($contract, 'milestone_created', "Milestone created: {$milestone->title}");
-        $notifications->send($contract->freelancer_id, 'milestone_created', 'New milestone created', "{$milestone->title} was added to {$contract->title}.", "/projects/{$contract->id}");
+        $notifications->send($contract->freelancer_id, 'milestone_created', 'New milestone created', "{$milestone->title} was added to {$contract->title}.", "/projects/{$contract->id}?milestone={$milestone->id}&focus=milestone");
 
         return response()->json(['data' => $milestone], 201);
     }
@@ -70,7 +70,7 @@ class ContractController extends Controller
             abort_unless($contract->freelancer_id === $request->user()->id && $milestone->status === 'planned', 422, 'Only the freelancer can start a planned milestone.');
             $milestone->update(['status' => 'in_progress']);
             $this->event($contract, 'milestone_started', "Milestone started: {$milestone->title}");
-            $notifications->send($contract->client_id, 'milestone_started', 'Milestone started', "{$milestone->title} is now in progress.", "/projects/{$contract->id}");
+            $notifications->send($contract->client_id, 'milestone_started', 'Milestone started', "{$milestone->title} is now in progress.", "/projects/{$contract->id}?milestone={$milestone->id}&focus=milestone");
         }
         if ($action === 'request_revision') {
             abort_unless($contract->client_id === $request->user()->id && $milestone->status === 'submitted', 422, 'Only the client can request a revision for a submitted milestone.');
@@ -80,7 +80,7 @@ class ContractController extends Controller
             $submission->update(['status' => 'revision_requested', 'review_note' => $revisionNote, 'reviewed_by' => $request->user()->id, 'reviewed_at' => now()]);
             $milestone->update(['status' => 'revision_requested']);
             $this->event($contract, 'revision_requested', "Revision requested: {$milestone->title}");
-            $notifications->send($contract->freelancer_id, 'revision_requested', 'Revision requested', "The client requested changes to {$milestone->title}.", "/projects/{$contract->id}");
+            $notifications->send($contract->freelancer_id, 'revision_requested', 'Revision requested', "The client requested changes to {$milestone->title}.", "/projects/{$contract->id}?milestone={$milestone->id}&focus=milestone");
         }
         if ($action === 'approve') {
             abort_unless($contract->client_id === $request->user()->id && $milestone->status === 'submitted', 422, 'Only the client can approve a submitted milestone.');
@@ -89,7 +89,7 @@ class ContractController extends Controller
             $submission->update(['status' => 'approved', 'reviewed_by' => $request->user()->id, 'reviewed_at' => now()]);
             $milestone->update(['status' => 'approved', 'approved_at' => now()]);
             $this->event($contract, 'milestone_approved', "Milestone approved: {$milestone->title}");
-            $notifications->send($contract->freelancer_id, 'milestone_approved', 'Milestone approved', "{$milestone->title} was approved.", "/projects/{$contract->id}");
+            $notifications->send($contract->freelancer_id, 'milestone_approved', 'Milestone approved', "{$milestone->title} was approved.", "/projects/{$contract->id}?milestone={$milestone->id}&focus=milestone");
         }
 
         return ['data' => $milestone->fresh()];
@@ -110,7 +110,7 @@ class ContractController extends Controller
             ? 'The client confirmed completion after the freelancer marked the work ready.'
             : 'The client completed the contract after approving every milestone.';
         $this->event($contract, 'contract_completed', "{$event} Both people can now leave a private project review.");
-        $notifications->send($contract->freelancer_id, 'contract_completed', 'Project completed', "{$contract->title} is complete. You can now leave a private review.", "/projects/{$contract->id}");
+        $notifications->send($contract->freelancer_id, 'contract_completed', 'Project completed', "{$contract->title} is complete. You can now leave a private review.", "/projects/{$contract->id}?focus=completion");
 
         return ['data' => $contract->fresh('milestones')];
     }
@@ -129,7 +129,7 @@ class ContractController extends Controller
             'freelancer_completion_note' => blank($data['note'] ?? null) ? null : $data['note'],
         ]);
         $this->event($contract, 'completion_requested', 'Freelancer marked all approved work ready for the client to complete the project.');
-        $notifications->send($contract->client_id, 'project_completion_requested', 'Project ready for completion', "{$request->user()->name} marked {$contract->title} ready for you to complete.", "/projects/{$contract->id}");
+        $notifications->send($contract->client_id, 'project_completion_requested', 'Project ready for completion', "{$request->user()->name} marked {$contract->title} ready for you to complete.", "/projects/{$contract->id}?focus=completion");
 
         return ['data' => $contract->fresh('milestones')];
     }
@@ -164,7 +164,7 @@ class ContractController extends Controller
         }
         $this->event($contract, 'contract_closed', $reportedUser ? 'Project closed. A reliability concern was sent to operations for fair review.' : 'Project closed. A project partner recorded a closing reason.');
         $partnerId = $contract->client_id === $request->user()->id ? $contract->freelancer_id : $contract->client_id;
-        $notifications->send($partnerId, 'contract_closed', 'Project closed', "{$contract->title} was closed. Review the project activity for the recorded reason.", "/projects/{$contract->id}");
+        $notifications->send($partnerId, 'contract_closed', 'Project closed', "{$contract->title} was closed. Review the project activity for the recorded reason.", "/projects/{$contract->id}?focus=activity");
 
         return ['data' => $contract->fresh(['milestones', 'closer'])];
     }
@@ -175,6 +175,7 @@ class ContractController extends Controller
         $payload = $contract->toArray();
         $payload['payment_policy'] = $payments->policy();
         $payload['payment_safety'] = $payments->safety($contract);
+        $payload['conversation_id'] = Conversation::query()->where('proposal_id', $contract->proposal_id)->value('id');
         $payload['milestones'] = $contract->milestones->map(function (ContractMilestone $milestone) use ($payments) {
             return [...$milestone->toArray(), 'payment_summary' => $payments->summary($milestone)];
         })->values();

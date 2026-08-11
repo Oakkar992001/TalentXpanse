@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
@@ -28,7 +28,7 @@ function confirmationForAction(path, payload) {
 }
 
 export function AdminLoginScreen() {
-  const { adminLogin, errorMessage, user } = useAuth()
+  const { adminLogin, errorMessage, sessionExpired, user } = useAuth()
   const navigate = useNavigate()
   const [form, setForm] = useState({ email: '', password: '' })
   const [error, setError] = useState('')
@@ -54,6 +54,7 @@ export function AdminLoginScreen() {
     <p className="eyebrow">TalentXpanse operations</p>
     <h1>Administrator sign in</h1>
     <p>Access is limited to company-provisioned administrator accounts.</p>
+    {sessionExpired && <p className="form-notice">Your session timed out for security. Please sign in again.</p>}
     {error && <p className="form-notice">{error}</p>}
     <form onSubmit={submit}>
       <label>Work email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
@@ -78,11 +79,15 @@ export function AdminDashboardScreen() {
   const [verificationData, setVerificationData] = useState(null)
   const [reliabilityData, setReliabilityData] = useState(null)
   const [lastRefreshed, setLastRefreshed] = useState(null)
+  const refreshingRef = useRef(false)
   const isAdmin = user?.roles?.includes('admin')
   const endpoint = tab === 'users' ? '/admin/users' : tab === 'jobs' ? '/admin/jobs' : tab === 'support' ? '/admin/support-requests' : tab === 'payments' ? '/admin/payment-records' : tab === 'audit' ? '/admin/audit-logs' : tab === 'verifications' ? '/admin/verifications' : tab === 'reliability' ? '/admin/reliability' : '/admin/reports'
 
-  const load = useCallback(async () => {
-    setError('')
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (refreshingRef.current) return
+
+    refreshingRef.current = true
+    if (!silent) setError('')
     try {
       const requests = tab === 'overview' ? [api.get('/admin/dashboard')] : [api.get('/admin/dashboard'), api.get(endpoint)]
       const responses = await Promise.all(requests)
@@ -96,11 +101,28 @@ export function AdminDashboardScreen() {
       }
       setLastRefreshed(new Date())
     } catch (requestError) {
-      setError(errorMessage(requestError))
+      if (!silent) setError(errorMessage(requestError))
+    } finally {
+      refreshingRef.current = false
     }
   }, [endpoint, errorMessage, tab])
 
   useEffect(() => { if (isAdmin) load() }, [isAdmin, load])
+
+  useEffect(() => {
+    if (!isAdmin) return undefined
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible' && !busy) load({ silent: true })
+    }
+    const interval = window.setInterval(refreshWhenVisible, 30000)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [busy, isAdmin, load])
 
   if (loading) return <main className="admin-login"><p>Loading administrator access…</p></main>
   if (!isAdmin) return <Navigate to="/admin/login" replace />
@@ -129,7 +151,7 @@ export function AdminDashboardScreen() {
     <nav>{[['overview', 'Overview'], ['reports', 'Reports'], ['support', 'Project support'], ['reliability', 'Reliability'], ['verifications', 'Verifications'], ['payments', 'Payment safety'], ['audit', 'Audit trail'], ['jobs', 'Jobs'], ['users', 'Users']].map(([value, title]) => <button key={value} className={tab === value ? 'active' : ''} onClick={() => setTab(value)}>{title}</button>)}</nav>
     <div className="admin-account"><b>{user.name}</b><small>{user.email}</small><button onClick={signOut}>Log out</button></div>
   </aside><main>
-    <header><div><p className="eyebrow">Administrator console</p><h1>{tab === 'overview' ? 'Marketplace overview' : label(tab)}</h1></div><div className="admin-header-actions"><small>{lastRefreshed ? `Updated ${lastRefreshed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Loading current data'}</small><button className="button button-outline" onClick={load} disabled={busy}>Refresh</button><span className="admin-status">Platform monitoring</span></div></header>
+    <header><div><p className="eyebrow">Administrator console</p><h1>{tab === 'overview' ? 'Marketplace overview' : label(tab)}</h1></div><div className="admin-header-actions"><small>{lastRefreshed ? `Auto-updated ${lastRefreshed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Loading current data'}</small><span className="admin-status">Live monitoring</span></div></header>
     {error && <p className="form-notice">{error}</p>}
     {!dashboard ? <p className="admin-loading">Loading operational data…</p> : <>
       {tab === 'overview' && <section className="admin-metrics">{[['Users', dashboard.users], ['Open jobs', dashboard.open_jobs], ['Proposals', dashboard.proposals], ['Active contracts', dashboard.active_contracts], ['Content reports', dashboard.open_reports], ['Project support', dashboard.open_support_requests], ['Reliability backlog', dashboard.pending_reliability_cases], ['Payment holds', dashboard.payment_holds], ['Audit entries', dashboard.audit_entries], ['Suspended users', dashboard.suspended_users]].map(([name, value]) => <article key={name}><small>{name}</small><b>{value}</b></article>)}</section>}

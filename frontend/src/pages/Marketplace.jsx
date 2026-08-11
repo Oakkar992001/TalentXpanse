@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import { usePreferences } from '../contexts/PreferencesContext'
 import MarketplaceSaveButton from '../components/MarketplaceSaveButton'
 import MarketplaceReportButton from '../components/MarketplaceReportButton'
 
@@ -18,9 +20,38 @@ const proposalCreditCost = (job) => {
 function Notice({ children }) { return <p className="form-notice">{children}</p> }
 function Avatar({ name, photoUrl }) { return <span className="avatar">{photoUrl ? <img src={photoUrl} alt="" /> : name?.split(' ').map((part) => part[0]).slice(0, 2).join('') || 'TX'}</span> }
 
+function ProposalSuccessDialog({ proposal, onClose, onTrack }) {
+  const trackButton = useRef(null)
+
+  useEffect(() => {
+    trackButton.current?.focus()
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  return createPortal(<div className="proposal-success-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <section className="proposal-success-dialog" role="dialog" aria-modal="true" aria-labelledby="proposal-success-title" aria-describedby="proposal-success-message">
+      <span className="proposal-success-icon" aria-hidden="true">✓</span>
+      <div>
+        <p className="eyebrow">Proposal submitted</p>
+        <h2 id="proposal-success-title">You’re in the running.</h2>
+        <p id="proposal-success-message">Your proposal for this job was sent successfully. {proposal.credit_cost} Proposal Credit{proposal.credit_cost === 1 ? '' : 's'} were used.</p>
+      </div>
+      <footer>
+        <button type="button" className="button button-outline" onClick={onClose}>Stay on job</button>
+        <button type="button" className="button button-primary" ref={trackButton} onClick={onTrack}>View proposal</button>
+      </footer>
+    </section>
+  </div>, document.body)
+}
+
 function GoogleButton({ disabled, onCredential, onError }) {
   const container = useRef(null)
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+  const { t } = usePreferences()
 
   useEffect(() => {
     if (!clientId || !container.current) return undefined
@@ -49,19 +80,20 @@ function GoogleButton({ disabled, onCredential, onError }) {
     googleScript.defer = true
     googleScript.dataset.googleIdentity = 'true'
     googleScript.onload = initialize
-    googleScript.onerror = () => onError('Google Sign-In could not load. Check your internet connection and try again.')
+    googleScript.onerror = () => onError(t('auth.google_load_error', 'Google Sign-In could not load. Check your internet connection and try again.'))
     document.head.appendChild(googleScript)
     return () => { googleScript.onload = null; googleScript.onerror = null }
-  }, [clientId, onCredential, onError])
+  }, [clientId, onCredential, onError, t])
 
-  if (!clientId) return <button type="button" disabled><b className="google-mark">G</b>Google unavailable</button>
+  if (!clientId) return <button type="button" disabled><b className="google-mark">G</b>{t('auth.google_unavailable', 'Google unavailable')}</button>
   return <div className={disabled ? 'google-button-disabled' : ''} ref={container} />
 }
 
 export function AuthScreen({ mode }) {
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const { login, register, googleLogin, errorMessage } = useAuth()
+  const { login, register, googleLogin, errorMessage, sessionExpired } = useAuth()
+  const { t } = usePreferences()
   const [role, setRole] = useState(() => params.get('role') === 'client' ? 'client' : 'freelancer')
   const [form, setForm] = useState({ name: '', email: '', password: '', password_confirmation: '', terms_accepted: false, privacy_accepted: false })
   const [error, setError] = useState('')
@@ -86,21 +118,22 @@ export function AuthScreen({ mode }) {
     } catch (requestError) { setError(errorMessage(requestError)) } finally { setBusy(false) }
   }, [errorMessage, form.privacy_accepted, form.terms_accepted, googleLogin, navigate, nextPath, role])
 
-  return <section className="auth-page"><div className="auth-panel"><div className="auth-card"><p className="eyebrow">{isLogin ? 'Welcome back' : 'Create your account'}</p><h1>{isLogin ? 'Continue your journey.' : 'How would you like to use TalentXpanse?'}</h1><p className="auth-intro">{isLogin ? 'Sign in to manage your work and opportunities.' : 'Start with one path today. You can add the other profile later.'}</p>
+  return <section className="auth-page"><div className="auth-panel"><div className="auth-card"><p className="eyebrow">{isLogin ? t('auth.welcome', 'Welcome back') : t('auth.create_account', 'Create your account')}</p><h1>{isLogin ? t('auth.continue_journey', 'Continue your journey.') : t('auth.how_use', 'How would you like to use TalentXpanse?')}</h1><p className="auth-intro">{isLogin ? t('auth.login_intro', 'Sign in to manage your work and opportunities.') : t('auth.register_intro', 'Start with one path today. You can add the other profile later.')}</p>
     <form onSubmit={submit}>
-      {!isLogin && <div className="role-cards"><button type="button" className={role === 'freelancer' ? 'selected' : ''} onClick={() => setRole('freelancer')}><span>✦</span><div><b>Find work</b><small>Build your profile, discover projects, and send proposals.</small></div><i /></button><button type="button" className={role === 'client' ? 'selected' : ''} onClick={() => setRole('client')}><span>▣</span><div><b>Hire talent</b><small>Post a job, discover skilled people, and hire with confidence.</small></div><i /></button></div>}
+      {!isLogin && <div className="role-cards"><button type="button" className={role === 'freelancer' ? 'selected' : ''} onClick={() => setRole('freelancer')}><span>✦</span><div><b>{t('auth.find_work', 'Find work')}</b><small>{t('auth.find_work_detail', 'Build your profile, discover projects, and send proposals.')}</small></div><i /></button><button type="button" className={role === 'client' ? 'selected' : ''} onClick={() => setRole('client')}><span>▣</span><div><b>{t('auth.hire_talent', 'Hire talent')}</b><small>{t('auth.hire_talent_detail', 'Post a job, discover skilled people, and hire with confidence.')}</small></div><i /></button></div>}
       <div className="auth-fields">
-        {!isLogin && <label>Full name<input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Your name" /></label>}
-        <label>Email<input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="you@example.com" /></label>
-        <label>Password<input required minLength="8" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="At least 8 characters" /></label>
-        {!isLogin && <label>Confirm password<input required type="password" value={form.password_confirmation} onChange={(e) => setForm({ ...form, password_confirmation: e.target.value })} placeholder="Repeat your password" /></label>}
+        {!isLogin && <label>{t('auth.full_name', 'Full name')}<input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t('auth.your_name', 'Your name')} /></label>}
+        <label>{t('auth.email', 'Email')}<input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder={t('auth.email_example', 'you@example.com')} /></label>
+        <label>{t('auth.password', 'Password')}<input required minLength="8" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={t('auth.at_least_8', 'At least 8 characters')} /></label>
+        {!isLogin && <label>{t('auth.confirm_password', 'Confirm password')}<input required type="password" value={form.password_confirmation} onChange={(e) => setForm({ ...form, password_confirmation: e.target.value })} placeholder={t('auth.repeat_password', 'Repeat your password')} /></label>}
       </div>
-      {!isLogin && <div className="auth-consent"><label><input required type="checkbox" checked={form.terms_accepted} onChange={(event) => setForm({ ...form, terms_accepted: event.target.checked })} /> <span>I agree to the <Link to="/terms">Terms of Use</Link>.</span></label><label><input required type="checkbox" checked={form.privacy_accepted} onChange={(event) => setForm({ ...form, privacy_accepted: event.target.checked })} /> <span>I agree to the <Link to="/privacy">Privacy Policy</Link>.</span></label></div>}
+      {!isLogin && <div className="auth-consent"><label><input required type="checkbox" checked={form.terms_accepted} onChange={(event) => setForm({ ...form, terms_accepted: event.target.checked })} /> <span>{t('auth.agree_prefix', 'I agree to the ')}<Link to="/terms">{t('auth.terms', 'Terms of Use')}</Link>.</span></label><label><input required type="checkbox" checked={form.privacy_accepted} onChange={(event) => setForm({ ...form, privacy_accepted: event.target.checked })} /> <span>{t('auth.agree_prefix', 'I agree to the ')}<Link to="/privacy">{t('auth.privacy', 'Privacy Policy')}</Link>.</span></label></div>}
+      {isLogin && sessionExpired && <Notice>{t('auth.session_expired', 'Your session timed out for security. Please sign in again.')}</Notice>}
       {error && <Notice>{error}</Notice>}
-      <button disabled={busy} className="button button-primary auth-continue">{busy ? 'Please wait...' : isLogin ? 'Log in' : `Continue as ${roleLabel(role)}`}</button>
-    </form>{isLogin && <p className="auth-forgot"><Link to="/forgot-password">Forgot password?</Link></p>}
-    <div className="auth-divider"><span>or continue with</span></div><div className="google-sign-in"><div className="google-sign-in-copy"><span className="google-symbol" aria-hidden="true">G</span><div><b>Continue with Google</b><small>Fast, secure sign-in — no extra password needed.</small></div></div><GoogleButton disabled={busy} onCredential={signInWithGoogle} onError={setError} /></div><p className="auth-switch">{isLogin ? 'New to TalentXpanse?' : 'Already have an account?'} <Link to={isLogin ? '/register' : '/login'}>{isLogin ? 'Sign up' : 'Log in'}</Link></p>
-  </div></div><aside className="auth-art"><div className="art-card large"><span>▣</span><b>Projects that matter</b><small>Find the right people and the right work.</small></div><div className="art-card small"><Avatar name="Nandar Win" /><b>Build lasting relationships.</b></div><div className="art-figure">✦</div></aside></section>
+      <button disabled={busy} className="button button-primary auth-continue">{busy ? t('auth.please_wait', 'Please wait...') : isLogin ? t('auth.log_in', 'Log in') : t('auth.continue_as', `Continue as ${roleLabel(role)}`, { role: role === 'client' ? t('common.client', 'Client') : t('common.freelancer', 'Freelancer') })}</button>
+    </form>{isLogin && <p className="auth-forgot"><Link to="/forgot-password">{t('auth.forgot_password', 'Forgot password?')}</Link></p>}
+    <div className="auth-divider"><span>{t('auth.or_continue', 'or continue with')}</span></div><div className="google-sign-in"><div className="google-sign-in-copy"><span className="google-symbol" aria-hidden="true">G</span><div><b>{t('auth.continue_google', 'Continue with Google')}</b><small>{t('auth.google_detail', 'Fast, secure sign-in — no extra password needed.')}</small></div></div><GoogleButton disabled={busy} onCredential={signInWithGoogle} onError={setError} /></div><p className="auth-switch">{isLogin ? t('auth.new_to', 'New to TalentXpanse?') : t('auth.already_account', 'Already have an account?')} <Link to={isLogin ? '/register' : '/login'}>{isLogin ? t('nav.signup', 'Sign up') : t('nav.login', 'Log in')}</Link></p>
+  </div></div><aside className="auth-art"><div className="art-card large"><span>▣</span><b>{t('auth.projects_matter', 'Projects that matter')}</b><small>{t('auth.projects_matter_detail', 'Find the right people and the right work.')}</small></div><div className="art-card small"><Avatar name="Nandar Win" /><b>{t('auth.relationships', 'Build lasting relationships.')}</b></div><div className="art-figure">✦</div></aside></section>
 }
 
 export function JobsScreen() {
@@ -259,26 +292,42 @@ export function JobDetailScreen() {
   const [job, setJob] = useState(null)
   const [proposals, setProposals] = useState([])
   const [credits, setCredits] = useState(null)
+  const [myProposal, setMyProposal] = useState(null)
   const [portfolio, setPortfolio] = useState([])
   const [resume, setResume] = useState(null)
+  const [proposalResume, setProposalResume] = useState(null)
   const [form, setForm] = useState({ cover_letter: '', bid_amount: '', delivery_days: '', portfolio_item_ids: [], attach_resume: false })
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [actionId, setActionId] = useState(null)
+  const [submittedProposal, setSubmittedProposal] = useState(null)
   const isFreelancer = user?.roles?.includes('freelancer')
   const ownsJob = Boolean(job && user?.id === job.client_id)
   const browseJobsPath = pathname.startsWith('/search/') ? '/search' : '/jobs'
 
   const refreshJob = useCallback(() => api.get(`/jobs/${id}`).then(({ data }) => setJob(data.data)).catch(() => setError('This job is no longer available.')), [id])
   const refreshProposals = useCallback(() => api.get(`/jobs/${id}/proposals`).then(({ data }) => setProposals(data.data)).catch((requestError) => setError(errorMessage(requestError))), [errorMessage, id])
+  const refreshMyProposal = useCallback(() => api.get(`/jobs/${id}/my-proposal`).then(({ data }) => setMyProposal(data.data)).catch(() => setMyProposal(null)), [id])
 
   useEffect(() => { refreshJob() }, [refreshJob])
   useEffect(() => {
     if (!isFreelancer) return
     api.get('/proposal-credits').then(({ data }) => setCredits(data.data)).catch(() => setCredits(null))
-    api.get('/freelancer-profile').then(({ data }) => { setPortfolio(data.data.portfolio_items || []); setResume(data.data.freelancer_resume) })
+    api.get('/freelancer-profile').then(({ data }) => {
+      const freelancerResume = data.data.freelancer_resume
+      setPortfolio(data.data.portfolio_items || [])
+      setResume(freelancerResume)
+      if (freelancerResume) setForm((current) => ({ ...current, attach_resume: true }))
+    })
   }, [user?.id, isFreelancer])
+  useEffect(() => {
+    if (!isFreelancer) {
+      setMyProposal(null)
+      return
+    }
+    refreshMyProposal()
+  }, [isFreelancer, refreshMyProposal])
   useEffect(() => { if (ownsJob) refreshProposals() }, [ownsJob, refreshProposals])
 
   const submit = async (event) => {
@@ -286,10 +335,20 @@ export function JobDetailScreen() {
     if (!user) { navigate('/login'); return }
     setBusy(true); setError(''); setNotice('')
     try {
-      const { data } = await api.post(`/jobs/${id}/proposals`, { ...form, bid_amount: Number(form.bid_amount), delivery_days: form.delivery_days ? Number(form.delivery_days) : null })
+      const payload = new FormData()
+      payload.append('cover_letter', form.cover_letter)
+      payload.append('bid_amount', String(Number(form.bid_amount)))
+      payload.append('attach_resume', form.attach_resume ? '1' : '0')
+      if (form.delivery_days) payload.append('delivery_days', String(Number(form.delivery_days)))
+      form.portfolio_item_ids.forEach((itemId) => payload.append('portfolio_item_ids[]', String(itemId)))
+      if (proposalResume) payload.append('proposal_resume', proposalResume)
+
+      const { data } = await api.post(`/jobs/${id}/proposals`, payload)
       setCredits(data.proposal_credits)
-      setNotice(`Proposal sent with ${data.data.credit_cost} Proposal Credits used.`)
+      setMyProposal(data.data)
+      setSubmittedProposal(data.data)
       setForm({ cover_letter: '', bid_amount: '', delivery_days: '', portfolio_item_ids: [], attach_resume: false })
+      setProposalResume(null)
       refreshJob()
     } catch (requestError) { setError(errorMessage(requestError)) } finally { setBusy(false) }
   }
@@ -298,6 +357,33 @@ export function JobDetailScreen() {
     const selected = form.portfolio_item_ids.includes(itemId)
     if (!selected && form.portfolio_item_ids.length === 3) return
     setForm({ ...form, portfolio_item_ids: selected ? form.portfolio_item_ids.filter((id) => id !== itemId) : [...form.portfolio_item_ids, itemId] })
+  }
+
+  const selectProposalResume = (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+    if (!isPdf || file.size > 10 * 1024 * 1024) {
+      setError('Choose a PDF CV that is 10 MB or smaller.')
+      return
+    }
+
+    setError('')
+    setProposalResume(file)
+    setForm((current) => ({ ...current, attach_resume: false }))
+  }
+
+  const removeProposalResume = () => {
+    if (proposalResume) setProposalResume(null)
+    else setForm((current) => ({ ...current, attach_resume: false }))
+  }
+
+  const useSavedResume = () => {
+    if (!resume) return
+    setProposalResume(null)
+    setForm((current) => ({ ...current, attach_resume: true }))
   }
 
   const decide = async (proposalId, status) => {
@@ -326,12 +412,31 @@ export function JobDetailScreen() {
   if (error && !job) return <section className="simple-page"><h1>Job unavailable</h1><Notice>{error}</Notice><Link className="button button-primary" to={browseJobsPath}>Browse jobs</Link></section>
   if (!job) return <section className="simple-page"><p>Loading job...</p></section>
   const cost = proposalCreditCost(job)
-  const canApply = isFreelancer && !ownsJob && job.status === 'open'
+  const bidMinimum = Math.max(1000, Number(job.budget_min || 0))
+  const bidMaximum = job.budget_max === null || job.budget_max === undefined ? null : Number(job.budget_max)
+  const bidRange = bidMaximum === null ? `from ${formatMMK(bidMinimum)}` : `${formatMMK(bidMinimum)} to ${formatMMK(bidMaximum)}`
+  const canApply = isFreelancer && !ownsJob && job.status === 'open' && !myProposal
+  const attachedResumeName = proposalResume?.name || (form.attach_resume ? resume?.original_name : null)
+  const hasProposalResume = Boolean(attachedResumeName)
 
   return <section className="marketplace-page job-detail"><div className="marketplace-detail-actions"><Link to={browseJobsPath}>← All jobs</Link><div><MarketplaceSaveButton kind="job" targetId={job.id} /><MarketplaceReportButton targetType="job" targetId={job.id} /></div></div><article className="job-detail-card"><p className="eyebrow">{job.category} · {job.status.replace('_', ' ')}</p><h1>{job.title}</h1><p>{job.description}</p><div>{job.skills?.map((skill) => <span className="tag" key={skill}>{skill}</span>)}</div><dl><div><dt>Budget</dt><dd>{formatMMK(job.budget_min)} – {formatMMK(job.budget_max)}</dd></div><div><dt>Experience</dt><dd>{job.experience_level}</dd></div><div><dt>Proposals</dt><dd>{job.proposals_count}</dd></div></dl></article>{notice && <Notice>{notice}</Notice>}{error && <Notice>{error}</Notice>}
-    {ownsJob && <section className="client-proposals"><div className="section-heading"><div><p className="eyebrow">Client workspace</p><h2>Review proposals</h2></div><span>{proposals.length} received</span></div>{proposals.length ? proposals.map((proposal) => <article className="client-proposal" key={proposal.id}><Avatar name={proposal.freelancer?.name} photoUrl={proposal.freelancer?.profile_photo_url} /><div className="client-proposal-main"><div><b>{proposal.freelancer?.name}</b><span className={`proposal-status ${proposal.status}`}>{proposal.status}</span></div><small>{proposal.freelancer?.freelancer_profile?.title || 'Freelancer'}</small><p>{proposal.cover_letter}</p>{proposal.work_samples?.length > 0 && <div className="proposal-samples"><b>Selected work</b>{proposal.work_samples.map((sample) => sample.project_url ? <a key={sample.id} href={sample.project_url} target="_blank" rel="noreferrer">{sample.title} ↗</a> : <span key={sample.id}>{sample.title}</span>)}</div>}{proposal.resume_name && <button type="button" className="resume-link" onClick={() => downloadCv(proposal)}>Download CV (PDF)</button>}</div><div className="client-proposal-offer"><b>{formatMMK(proposal.bid_amount)}</b><small>{proposal.delivery_days || 'Flexible'} days</small>{job.status === 'open' && proposal.status !== 'declined' && <div className="proposal-actions"><button type="button" disabled={actionId === proposal.id} onClick={() => decide(proposal.id, 'shortlisted')}>Shortlist</button><button type="button" className="decline" disabled={actionId === proposal.id} onClick={() => decide(proposal.id, 'declined')}>Decline</button><button type="button" className="hire" disabled={actionId === proposal.id} onClick={() => decide(proposal.id, 'hired')}>{actionId === proposal.id ? 'Working...' : 'Hire'}</button></div>}</div></article>) : <p className="empty-panel">No proposals yet. New proposals will appear here.</p>}</section>}
-    {canApply && <form className="proposal-form" onSubmit={submit}><div className="proposal-form-heading"><div><h2>Submit a proposal</h2><p>Choose the work that best supports this application.</p></div><div className="credit-balance"><b>{credits?.balance ?? '–'}</b><span>Proposal Credits</span></div></div><div className="credit-cost"><span>This proposal costs <b>{cost} credits</b></span><small>Free credits expire 60 days after each grant and can build up to 40. The soonest-expiring credits are used first.</small></div>{portfolio.length > 0 && <fieldset className="proposal-attachments"><legend>Attach work samples <small>Select up to 3</small></legend>{portfolio.map((item) => <label key={item.id} className={form.portfolio_item_ids.includes(item.id) ? 'selected' : ''}><input type="checkbox" checked={form.portfolio_item_ids.includes(item.id)} onChange={() => selectWork(item.id)} /><span><b>{item.title}</b><small>{item.description || 'Portfolio work sample'}</small></span></label>)}</fieldset>}{resume && <label className="attach-resume"><input type="checkbox" checked={form.attach_resume} onChange={(event) => setForm({ ...form, attach_resume: event.target.checked })} /> Attach CV: <b>{resume.original_name}</b></label>}<label>Your proposal<textarea required minLength="40" value={form.cover_letter} onChange={(event) => setForm({ ...form, cover_letter: event.target.value })} placeholder="Explain why you are a great fit for this project." /></label><div><label>Your bid (MMK)<input required min="1000" type="number" value={form.bid_amount} onChange={(event) => setForm({ ...form, bid_amount: event.target.value })} /></label><label>Delivery days<input min="1" type="number" value={form.delivery_days} onChange={(event) => setForm({ ...form, delivery_days: event.target.value })} /></label></div><button disabled={busy} className="button button-primary">{busy ? 'Submitting...' : `Submit proposal · ${cost} credits`}</button></form>}
-    {!ownsJob && !canApply && <aside className="job-cta"><h2>{job.status === 'open' ? 'Want to apply?' : 'This job is in progress'}</h2><p>{user ? 'Add a Freelancer workspace in Settings to submit a proposal with the same sign-in.' : 'Create a Freelancer account to submit a proposal.'}</p><Link className="button button-primary" to={user ? '/settings/account' : '/register'}>{user ? 'Add Freelancer workspace' : 'Create an account'}</Link></aside>}
+    {ownsJob && <section className="client-proposals"><div className="section-heading"><div><p className="eyebrow">Client workspace</p><h2>Review proposals</h2></div><span>{proposals.length} received</span></div>{proposals.length ? proposals.map((proposal) => <article className="client-proposal" key={proposal.id}><Avatar name={proposal.freelancer?.name} photoUrl={proposal.freelancer?.profile_photo_url} /><div className="client-proposal-main"><div><b>{proposal.freelancer?.name}</b><span className={`proposal-status ${proposal.status}`}>{proposal.status}</span></div><small>{proposal.freelancer?.freelancer_profile?.title || 'Freelancer'}</small><p>{proposal.cover_letter}</p>{proposal.work_samples?.length > 0 && <div className="proposal-samples"><b>Selected work</b>{proposal.work_samples.map((sample) => sample.project_url ? <a key={sample.id} href={sample.project_url} target="_blank" rel="noreferrer">{sample.title} ↗</a> : <span key={sample.id}>{sample.title}</span>)}</div>}<div className="proposal-comparison-actions"><Link className="proposal-profile-link" to={`/search/freelancers/${proposal.freelancer_id}`}>View profile</Link>{proposal.resume_name && <button type="button" className="resume-link" onClick={() => downloadCv(proposal)}><span>CV attached</span> Download PDF</button>}</div></div><div className="client-proposal-offer"><b>{formatMMK(proposal.bid_amount)}</b><small>{proposal.delivery_days || 'Flexible'} days</small>{job.status === 'open' && ['submitted', 'shortlisted', 'interviewing'].includes(proposal.status) && <div className="proposal-actions"><button type="button" disabled={actionId === proposal.id} onClick={() => decide(proposal.id, 'shortlisted')}>Shortlist</button><button type="button" className="decline" disabled={actionId === proposal.id} onClick={() => decide(proposal.id, 'declined')}>Decline</button><button type="button" className="hire" disabled={actionId === proposal.id} onClick={() => decide(proposal.id, 'hired')}>{actionId === proposal.id ? 'Working...' : 'Hire'}</button></div>}</div></article>) : <p className="empty-panel">No proposals yet. New proposals will appear here.</p>}</section>}
+    {canApply && <form className="proposal-form" onSubmit={submit}>
+      <div className="proposal-form-heading"><div><h2>Submit a proposal</h2><p>Choose the work that best supports this application.</p></div><div className="credit-balance"><b>{credits?.balance ?? '–'}</b><span>Proposal Credits</span></div></div>
+      <div className="credit-cost"><span>This proposal costs <b>{cost} credits</b></span><small>Free credits expire 60 days after each grant and can build up to 40. The soonest-expiring credits are used first.</small></div>
+      {portfolio.length > 0 && <fieldset className="proposal-attachments"><legend>Attach work samples <small>Select up to 3</small></legend>{portfolio.map((item) => <label key={item.id} className={form.portfolio_item_ids.includes(item.id) ? 'selected' : ''}><input type="checkbox" checked={form.portfolio_item_ids.includes(item.id)} onChange={() => selectWork(item.id)} /><span><b>{item.title}</b><small>{item.description || 'Portfolio work sample'}</small></span></label>)}</fieldset>}
+      <fieldset className="proposal-cv">
+        <legend>CV attachment <small>Optional · PDF up to 10 MB</small></legend>
+        {hasProposalResume ? <div className="proposal-cv-selected"><span className="proposal-cv-file" aria-hidden="true">PDF</span><div><b>{attachedResumeName}</b><small>{proposalResume ? 'Uploaded for this proposal only. Your saved profile CV will not change.' : 'Your saved profile CV is attached to this proposal.'}</small></div><button type="button" onClick={removeProposalResume}>Remove</button></div> : <div className="proposal-cv-empty"><p>No CV will be sent with this proposal.</p>{resume && <button type="button" onClick={useSavedResume}>Use saved CV</button>}</div>}
+        <label className="proposal-cv-upload">{hasProposalResume ? 'Replace with a new PDF' : 'Upload a PDF CV'}<input type="file" accept="application/pdf,.pdf" onChange={selectProposalResume} /></label>
+      </fieldset>
+      <label>Your proposal<textarea required minLength="40" value={form.cover_letter} onChange={(event) => setForm({ ...form, cover_letter: event.target.value })} placeholder="Explain why you are a great fit for this project." /></label>
+      <div className="proposal-bid-grid"><label>Your bid (MMK)<input required min={bidMinimum} max={bidMaximum ?? undefined} step="1000" inputMode="numeric" type="number" value={form.bid_amount} onChange={(event) => setForm({ ...form, bid_amount: event.target.value })} aria-describedby="proposal-bid-range" /><small id="proposal-bid-range">Client budget: <b>{bidRange}</b>. Bids increase in Ks 1,000 steps.</small></label><label>Delivery days<input min="1" type="number" value={form.delivery_days} onChange={(event) => setForm({ ...form, delivery_days: event.target.value })} /></label></div>
+      <button disabled={busy} className="button button-primary">{busy ? 'Submitting...' : `Submit proposal · ${cost} credits`}</button>
+    </form>}
+    {!ownsJob && myProposal && <aside className="job-cta submitted-proposal-card"><p className="eyebrow">Proposal submitted</p><h2>You have already applied.</h2><p>Your {formatMMK(myProposal.bid_amount)} proposal is currently <b>{myProposal.status.replace('_', ' ')}</b>. You can track its status or withdraw it from My Work.</p><Link className="button button-primary" to="/work?role=freelancer">View proposal</Link></aside>}
+    {!ownsJob && !myProposal && !canApply && <aside className="job-cta"><h2>{job.status === 'open' ? 'Want to apply?' : 'This job is in progress'}</h2><p>{user ? (isFreelancer ? 'This job is not accepting new proposals.' : 'Add a Freelancer workspace in Settings to submit a proposal with the same sign-in.') : 'Create a Freelancer account to submit a proposal.'}</p>{(!user || !isFreelancer) && <Link className="button button-primary" to={user ? '/settings/account' : '/register'}>{user ? 'Add Freelancer workspace' : 'Create an account'}</Link>}</aside>}
+    {submittedProposal && <ProposalSuccessDialog proposal={submittedProposal} onClose={() => setSubmittedProposal(null)} onTrack={() => navigate(`/work?role=freelancer&proposalSubmitted=${submittedProposal.id}`)} />}
   </section>
 }
 

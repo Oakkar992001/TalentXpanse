@@ -57,7 +57,7 @@ Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
     Route::patch('/auth/active-role', [AuthController::class, 'setActiveRole']);
     Route::get('/account-settings', [AccountSettingsController::class, 'show']);
     Route::put('/account-settings', [AccountSettingsController::class, 'update']);
-    Route::post('/verification-requests', [VerificationRequestController::class, 'request']);
+    Route::post('/verification-requests', [VerificationRequestController::class, 'request'])->middleware('throttle:5,1');
     Route::put('/account/password', [PasswordController::class, 'update']);
 
     Route::get('/dashboard', [DashboardController::class, 'show']);
@@ -89,6 +89,7 @@ Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
         Route::get('/verifications', [AdminController::class, 'verifications']);
         Route::get('/reliability', [AdminController::class, 'reliability']);
         Route::patch('/reliability-events/{reliabilityEvent}', [AdminController::class, 'updateReliabilityEvent']);
+        Route::get('/identity-verification-submissions/{identityVerificationSubmission}/documents/{side}', [AdminController::class, 'downloadIdentityVerificationDocument']);
         Route::patch('/users/{user}/identity-verification', [AdminController::class, 'updateIdentityVerification']);
         Route::patch('/client-profiles/{clientProfile}/company-verification', [AdminController::class, 'updateCompanyVerification']);
         Route::patch('/contracts/{contract}/payment-hold', [AdminController::class, 'updatePaymentHold']);
@@ -126,6 +127,7 @@ Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
     Route::patch('/portfolio-items/{portfolioItem}', [PortfolioController::class, 'update']);
     Route::delete('/portfolio-items/{portfolioItem}', [PortfolioController::class, 'destroy']);
     Route::post('/freelancer-resume', [FreelancerResumeController::class, 'store'])->middleware('throttle:10,1');
+    Route::delete('/freelancer-resume', [FreelancerResumeController::class, 'destroy']);
     Route::post('/profile-photo', [ProfilePhotoController::class, 'store'])->middleware('throttle:10,1');
     Route::get('/jobs/mine', [JobController::class, 'mine']);
     Route::post('/jobs', [JobController::class, 'store']);
@@ -135,6 +137,7 @@ Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
     Route::patch('/freelancer-invites/{invite}', [FreelancerInviteController::class, 'update']);
 
     Route::post('/jobs/{job}/proposals', [ProposalController::class, 'store'])->middleware('throttle:20,1');
+    Route::get('/jobs/{job}/my-proposal', [ProposalController::class, 'mineForJob']);
     Route::get('/jobs/{job}/proposals', [ProposalController::class, 'forJob']);
     Route::get('/proposals/mine', [ProposalController::class, 'mine']);
     Route::patch('/proposals/{proposal}', [ProposalController::class, 'updateStatus']);
