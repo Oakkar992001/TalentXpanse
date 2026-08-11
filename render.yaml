@@ -73,7 +73,7 @@ services:
       - key: MARKETPLACE_PRIVATE_AWS_SECRET_ACCESS_KEY
         sync: false
       - key: MARKETPLACE_PRIVATE_AWS_DEFAULT_REGION
-        value: auto
+        value: ap-southeast-1
       - key: MARKETPLACE_PRIVATE_AWS_BUCKET
         sync: false
       - key: MARKETPLACE_PRIVATE_AWS_ENDPOINT
@@ -85,7 +85,7 @@ services:
       - key: MARKETPLACE_PUBLIC_AWS_SECRET_ACCESS_KEY
         sync: false
       - key: MARKETPLACE_PUBLIC_AWS_DEFAULT_REGION
-        value: auto
+        value: ap-southeast-1
       - key: MARKETPLACE_PUBLIC_AWS_BUCKET
         sync: false
       - key: MARKETPLACE_PUBLIC_AWS_URL
