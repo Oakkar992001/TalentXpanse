@@ -6,7 +6,9 @@ envsubst '${PORT}' < /etc/nginx/http.d/default.conf.template > /etc/nginx/http.d
 
 php artisan migrate --force
 
-if [ -n "${OPEN_BETA_ADMIN_EMAIL:-}" ] || [ -n "${OPEN_BETA_ADMIN_PASSWORD:-}" ]; then
+# Bootstrap is intentionally opt-in: after the one-time password is removed,
+# retained admin metadata must not make future deploys fail.
+if [ -n "${OPEN_BETA_ADMIN_EMAIL:-}" ] && [ -n "${OPEN_BETA_ADMIN_PASSWORD:-}" ]; then
   php artisan marketplace:bootstrap-admin
 fi
 
