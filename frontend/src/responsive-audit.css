@@ -151,6 +151,18 @@ input, select, textarea, button { max-width: 100%; }
   .public-portfolio > div,
   .admin-metrics { grid-template-columns:1fr; }
 
+  .marketplace-page { padding:40px 18px calc(76px + env(safe-area-inset-bottom)); }
+  .marketplace-page h1 { font-size:clamp(31px, 8vw, 38px); line-height:1.12; }
+  .marketplace-page > header > p:not(.eyebrow) { margin:11px 0 19px; }
+  .job-search { margin:20px 0 25px; }
+  .live-job-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
+  .live-job-card { min-width:0; padding:17px; }
+  .live-job-card h2 { overflow-wrap:anywhere; }
+  .job-detail-card dl,
+  .proposal-form > div,
+  .post-job-form > div { grid-template-columns:1fr; gap:13px; }
+  .job-detail-card h1 { font-size:29px; line-height:1.16; }
+
   .workspace-discovery .search-tabs { margin-right:-16px; padding-right:16px; }
   .workspace-discovery .search-tabs button { flex:0 0 auto; }
 
@@ -209,6 +221,18 @@ input, select, textarea, button { max-width: 100%; }
   .admin-shell nav button { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .admin-table { margin-right:-2px; }
   .admin-table table { min-width:610px; }
+}
+
+@media (max-width: 600px) {
+  .marketplace-page { padding:33px 17px calc(68px + env(safe-area-inset-bottom)); }
+  .job-search { flex-direction:column; gap:9px; }
+  .job-search input,
+  .job-search .button { min-height:48px; }
+  .job-search .button { width:100%; justify-content:center; }
+  .live-job-grid { grid-template-columns:1fr; gap:11px; }
+  .live-job-card { padding:18px; }
+  .live-job-card small { min-height:0; line-height:1.5; }
+  .live-job-card footer { align-items:center; gap:10px; }
 }
 
 @media (max-width: 480px) {
