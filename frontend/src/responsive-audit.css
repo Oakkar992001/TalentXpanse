@@ -314,6 +314,14 @@ input, select, textarea, button { max-width: 100%; }
   .chat-messages article { max-width:92%; }
 }
 
+@media (max-width: 420px) {
+  .dashboard-topbar { justify-content:flex-end; }
+  .dashboard-topbar > div:first-child { display:none; }
+  .topbar-actions { margin-left:auto; }
+  .mobile-preferences .language-toggle { width:38px; min-width:38px; padding:3px !important; }
+  .mobile-preferences .language-toggle span { font-size:9px; }
+}
+
 .notification-live-status { display:inline-flex; align-items:center; gap:6px; margin-top:10px; color:var(--positive); font-size:11px; font-weight:700; }
 .notification-live-status i { width:7px; height:7px; border-radius:50%; background:currentColor; box-shadow:0 0 0 4px color-mix(in srgb, currentColor 15%, transparent); }
 
