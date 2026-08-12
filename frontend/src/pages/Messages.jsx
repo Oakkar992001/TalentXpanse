@@ -36,7 +36,6 @@ export default function MessagesScreen() {
   const [attachments, setAttachments] = useState([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [updatedAt, setUpdatedAt] = useState(null)
   const [showJumpToLatest, setShowJumpToLatest] = useState(false)
   const selectedId = params.get('conversation')
   const isClient = user?.roles?.includes('client')
@@ -53,7 +52,6 @@ export default function MessagesScreen() {
       const { data } = await api.get(`/conversations/${conversationId}`)
       loadedConversationId.current = data.data.id
       setConversation(data.data)
-      setUpdatedAt(new Date())
       if (updateUrl) setParams((current) => current.get('conversation') === String(conversationId) ? current : { conversation: conversationId })
     } catch (requestError) { setError(errorMessage(requestError)) }
   }, [errorMessage, setParams])
@@ -194,7 +192,7 @@ export default function MessagesScreen() {
   }
 
   return <section className="messages-page">
-    <header><div><p className="eyebrow">{t('nav.messages', 'Messages')}</p><h1>{t('messages.heading', 'Keep work conversations in one place.')}</h1><p>{t('messages.intro', 'Messages update automatically while this page is open. Share project context and supported files directly with the right person.')}</p></div></header>
+    <header><div><p className="eyebrow">{t('nav.messages', 'Messages')}</p><h1>{t('messages.heading', 'Keep work conversations in one place.')}</h1><p>{t('messages.intro', 'Share project context and supported files directly with the right person.')}</p></div></header>
     {error && <p className="form-notice" role="alert">{error}</p>}
     <div className="messages-layout">
       <aside className="conversation-list" aria-label={t('messages.conversations', 'Conversations')}>
@@ -204,7 +202,7 @@ export default function MessagesScreen() {
       </aside>
       <main className="chat-panel">
         {conversation ? <>
-          <header className="chat-header"><ContactAvatar user={conversation.other_user} /><div><b>{conversation.other_user?.name}</b><small>{conversation.type === 'project' ? t('messages.project_chat', `Project chat · ${conversation.job?.title}`, { title: conversation.job?.title }) : t('messages.proposal_chat', `Proposal chat · ${conversation.job?.title}`, { title: conversation.job?.title })}</small></div><span className="chat-sync" aria-live="polite">{updatedAt ? t('messages.auto_updated', 'Auto-updated') : t('common.loading', 'Loading...')}</span></header>
+          <header className="chat-header"><ContactAvatar user={conversation.other_user} /><div><b>{conversation.other_user?.name}</b><small>{conversation.type === 'project' ? t('messages.project_chat', `Project chat · ${conversation.job?.title}`, { title: conversation.job?.title }) : t('messages.proposal_chat', `Proposal chat · ${conversation.job?.title}`, { title: conversation.job?.title })}</small></div></header>
           <div className="chat-messages" ref={messagesContainer} onScroll={trackScroll} aria-live="polite">
             {showJumpToLatest && <button type="button" className="jump-to-latest" onClick={jumpToLatest}>{t('messages.jump_latest', 'Jump to latest message')}</button>}
             {conversation.messages?.map((item) => item.kind === 'system'

@@ -117,6 +117,21 @@ export function NotificationProvider({ children }) {
     }
   }, [errorMessage, replaceNotifications])
 
-  const value = useMemo(() => ({ notifications, unreadCount, loading, error, refresh, markRead, markAllRead }), [error, loading, markAllRead, markRead, notifications, refresh, unreadCount])
+  const clearAll = useCallback(async () => {
+    const previous = notificationsRef.current
+    if (!previous.length) return
+
+    replaceNotifications([])
+    try {
+      await api.delete('/notifications')
+      setError('')
+    } catch (requestError) {
+      replaceNotifications(previous)
+      setError(errorMessage(requestError))
+      throw requestError
+    }
+  }, [errorMessage, replaceNotifications])
+
+  const value = useMemo(() => ({ notifications, unreadCount, loading, error, refresh, markRead, markAllRead, clearAll }), [clearAll, error, loading, markAllRead, markRead, notifications, refresh, unreadCount])
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>
 }

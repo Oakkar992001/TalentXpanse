@@ -61,10 +61,10 @@ function JobForm({ form, onChange, busy, onCancel, onSubmit }) {
   const { t } = usePreferences()
   return <form className="dashboard-job-form" onSubmit={onSubmit}>
     <div className="dashboard-form-heading"><div><p className="eyebrow">{t('dashboard.new_job', 'New job')}</p><h2>{t('dashboard.job_form_title', 'Tell freelancers what you need.')}</h2><p>{t('dashboard.job_form_detail', 'A clear scope and budget attract more relevant proposals.')}</p></div><button type="button" className="dashboard-close" onClick={onCancel} aria-label={t('dashboard.close_job_form', 'Close job form')}>{t('common.close', 'Close')}</button></div>
-    <label>{t('dashboard.job_title', 'Job title')}<input required minLength="8" value={form.title} onChange={(event) => onChange({ ...form, title: event.target.value })} placeholder={t('dashboard.job_title_hint', 'e.g. Build a bilingual membership portal')} /></label>
+    <label>{t('dashboard.job_title', 'Job title')}<input required minLength="8" value={form.title} onChange={(event) => onChange({ ...form, title: event.target.value })} placeholder={t('dashboard.job_title_hint', 'Enter a clear job title')} /></label>
     <label>{t('dashboard.description', 'Project description')}<textarea required minLength="30" value={form.description} onChange={(event) => onChange({ ...form, description: event.target.value })} placeholder={t('dashboard.description_hint', 'Describe the outcome, important deliverables, and what a successful handover looks like.')} /></label>
-    <div className="dashboard-form-grid"><label>{t('dashboard.category', 'Category')}<select value={form.category} onChange={(event) => onChange({ ...form, category: event.target.value })}>{categories.map((category) => <option key={category} value={category}>{t(categoryLabels[category], category)}</option>)}</select></label><label>{t('dashboard.timeline', 'Timeline')}<select value={form.duration} onChange={(event) => onChange({ ...form, duration: event.target.value })}><option>{t('dashboard.less_month', 'Less than 1 month')}</option><option>{t('dashboard.one_three_months', '1 to 3 months')}</option><option>{t('dashboard.three_six_months', '3 to 6 months')}</option><option>{t('dashboard.more_six_months', 'More than 6 months')}</option></select></label><label>{t('dashboard.budget_from', 'Budget from (MMK)')}<input required min="1000" type="number" value={form.budget_min} onChange={(event) => onChange({ ...form, budget_min: event.target.value })} placeholder="200000" /></label><label>{t('dashboard.budget_to', 'Budget to (MMK)')}<input required min="1000" type="number" value={form.budget_max} onChange={(event) => onChange({ ...form, budget_max: event.target.value })} placeholder="500000" /></label></div>
-    <label>{t('dashboard.skills', 'Skills')}<input value={form.skills} onChange={(event) => onChange({ ...form, skills: event.target.value })} placeholder="Laravel, React, MySQL" /><small>{t('dashboard.separate_skills', 'Separate skills with commas.')}</small></label>
+    <div className="dashboard-form-grid"><label>{t('dashboard.category', 'Category')}<select value={form.category} onChange={(event) => onChange({ ...form, category: event.target.value })}>{categories.map((category) => <option key={category} value={category}>{t(categoryLabels[category], category)}</option>)}</select></label><label>{t('dashboard.timeline', 'Timeline')}<select value={form.duration} onChange={(event) => onChange({ ...form, duration: event.target.value })}><option>{t('dashboard.less_month', 'Less than 1 month')}</option><option>{t('dashboard.one_three_months', '1 to 3 months')}</option><option>{t('dashboard.three_six_months', '3 to 6 months')}</option><option>{t('dashboard.more_six_months', 'More than 6 months')}</option></select></label><label>{t('dashboard.budget_from', 'Budget from (MMK)')}<input required min="1000" step="1000" inputMode="numeric" type="number" value={form.budget_min} onChange={(event) => onChange({ ...form, budget_min: event.target.value })} /></label><label>{t('dashboard.budget_to', 'Budget to (MMK)')}<input required min={form.budget_min || '1000'} step="1000" inputMode="numeric" type="number" value={form.budget_max} onChange={(event) => onChange({ ...form, budget_max: event.target.value })} /></label></div>
+    <label>{t('dashboard.skills', 'Skills')}<input value={form.skills} onChange={(event) => onChange({ ...form, skills: event.target.value })} /><small>{t('dashboard.separate_skills', 'Separate skills with commas.')}</small></label>
     <footer><button disabled={busy} className="button button-primary">{busy ? t('dashboard.publishing', 'Publishing...') : t('dashboard.publish_job', 'Publish job')}</button><button type="button" disabled={busy} className="button button-outline" onClick={onCancel}>{t('common.cancel', 'Cancel')}</button></footer>
   </form>
 }
@@ -79,7 +79,7 @@ export default function DashboardScreen() {
   const [notice, setNotice] = useState('')
   const [showForm, setShowForm] = useState(() => params.get('postJob') === '1')
   const [busy, setBusy] = useState(false)
-  const [jobForm, setJobForm] = useState({ title: '', description: '', category: 'Development & IT', budget_min: '', budget_max: '', duration: 'Less than 1 month', skills: '' })
+  const [jobForm, setJobForm] = useState({ title: '', description: '', category: 'Development & IT', budget_min: '1000', budget_max: '1000', duration: 'Less than 1 month', skills: '' })
 
   const load = useCallback(() => {
     if (!user?.id) return
@@ -109,7 +109,7 @@ export default function DashboardScreen() {
         budget_type: 'fixed',
         experience_level: 'intermediate',
       })
-      setJobForm({ title: '', description: '', category: 'Development & IT', budget_min: '', budget_max: '', duration: 'Less than 1 month', skills: '' })
+      setJobForm({ title: '', description: '', category: 'Development & IT', budget_min: '1000', budget_max: '1000', duration: 'Less than 1 month', skills: '' })
       setShowForm(false)
       setNotice(t('dashboard.job_live', 'Your job is live and ready for proposals.'))
       load()

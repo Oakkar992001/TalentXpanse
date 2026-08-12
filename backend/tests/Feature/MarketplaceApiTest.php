@@ -495,6 +495,31 @@ class MarketplaceApiTest extends TestCase
         $this->patchJson("/api/notifications/{$otherNotification->id}/read")->assertForbidden();
     }
 
+    public function test_a_user_can_clear_only_their_own_notifications(): void
+    {
+        $user = User::factory()->create();
+        $otherUser = User::factory()->create();
+        $notification = MarketplaceNotification::create([
+            'user_id' => $user->id,
+            'type' => 'message_received',
+            'title' => 'New message',
+        ]);
+        $otherNotification = MarketplaceNotification::create([
+            'user_id' => $otherUser->id,
+            'type' => 'message_received',
+            'title' => 'Private message',
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $this->deleteJson('/api/notifications')
+            ->assertOk()
+            ->assertJsonPath('data.deleted', 1);
+
+        $this->assertDatabaseMissing('marketplace_notifications', ['id' => $notification->id]);
+        $this->assertDatabaseHas('marketplace_notifications', ['id' => $otherNotification->id]);
+    }
+
     public function test_marketplace_updates_are_broadcast_only_to_the_recipient_private_channel(): void
     {
         Event::fake([MarketplaceNotificationCreated::class, MarketplaceMessageCreated::class]);
@@ -707,6 +732,11 @@ class MarketplaceApiTest extends TestCase
         $this->assertDatabaseHas('marketplace_notifications', ['user_id' => $secondFreelancer->id, 'type' => 'proposal_not_selected']);
         $this->assertDatabaseHas('marketplace_jobs', ['id' => $job->id, 'status' => 'in_progress']);
         $this->assertDatabaseHas('contracts', ['proposal_id' => $selected->id, 'status' => 'active', 'agreed_amount' => 600000]);
+        $this->actingAs($client, 'sanctum')->getJson('/api/jobs/mine')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $job->id)
+            ->assertJsonPath('data.0.contract.job_id', $job->id)
+            ->assertJsonPath('data.0.contract.status', 'active');
         $this->actingAs($client, 'sanctum')->patchJson("/api/jobs/{$job->id}", ['status' => 'open'])->assertUnprocessable();
     }
 

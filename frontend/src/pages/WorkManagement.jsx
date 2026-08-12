@@ -45,6 +45,11 @@ function OfferTerms({ offer }) {
 
 function ClientJobCard({ job, busy, onUpdate }) {
   const actionBusy = busy === `job-${job.id}`
+  const project = job.contract
+  const hasProject = Boolean(project?.id)
+  const projectActionLabel = job.status === 'in_progress' ? 'Open workspace' : job.status === 'completed' ? 'View project summary' : 'View project record'
+  const canManageProposals = ['open', 'paused'].includes(job.status)
+  const canUpdateJob = ['open', 'paused', 'draft'].includes(job.status)
   return <article className="work-card">
     <div className="work-card-main">
       <div>
@@ -54,14 +59,16 @@ function ClientJobCard({ job, busy, onUpdate }) {
       </div>
       <div className="work-meta"><b>{job.proposals_count} proposal{job.proposals_count === 1 ? '' : 's'}</b><small>Posted {new Date(job.created_at).toLocaleDateString()}</small></div>
     </div>
-    <footer>
-      <Link className="button button-outline" to={`/manage/jobs/${job.id}/proposals`}>Manage proposals</Link>
+    {(hasProject || canManageProposals || canUpdateJob) && <footer>
+      {hasProject
+        ? <Link className="button button-primary" to={`/projects/${project.id}`}>{projectActionLabel}</Link>
+        : canManageProposals && <Link className="button button-outline" to={`/manage/jobs/${job.id}/proposals`}>Manage proposals</Link>}
       <div>
         {job.status === 'open' && <button disabled={actionBusy} onClick={() => onUpdate(job, 'paused')}>Pause</button>}
         {job.status === 'paused' && <button disabled={actionBusy} onClick={() => onUpdate(job, 'open')}>Reopen</button>}
-        {['open', 'paused', 'draft'].includes(job.status) && <button className="danger-action" disabled={actionBusy} onClick={() => onUpdate(job, 'closed')}>Close job</button>}
+        {canUpdateJob && <button className="danger-action" disabled={actionBusy} onClick={() => onUpdate(job, 'closed')}>Close job</button>}
       </div>
-    </footer>
+    </footer>}
   </article>
 }
 

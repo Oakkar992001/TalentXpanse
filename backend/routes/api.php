@@ -99,6 +99,7 @@ Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
     Route::put('/notification-preferences', [NotificationPreferenceController::class, 'update']);
     Route::get('/notifications/summary', [MarketplaceNotificationController::class, 'summary']);
     Route::patch('/notifications/read-all', [MarketplaceNotificationController::class, 'markAllRead']);
+    Route::delete('/notifications', [MarketplaceNotificationController::class, 'clearAll']);
     Route::patch('/notifications/{notification}/read', [MarketplaceNotificationController::class, 'markRead']);
     Route::get('/conversations', [ConversationController::class, 'index']);
     Route::get('/conversations/summary', [ConversationController::class, 'summary']);

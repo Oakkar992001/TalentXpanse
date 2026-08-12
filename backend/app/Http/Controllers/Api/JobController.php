@@ -70,7 +70,11 @@ class JobController extends Controller
     {
         $this->ensureClient($request);
 
-        return ['data' => $request->user()->clientJobs()->withCount('proposals')->latest()->get()];
+        return ['data' => $request->user()->clientJobs()
+            ->with(['contract:id,job_id,status'])
+            ->withCount('proposals')
+            ->latest()
+            ->get()];
     }
 
     private function ensureClient(Request $request): void
@@ -89,8 +93,8 @@ class JobController extends Controller
             'category' => [$required, 'string', 'max:100'],
             'skills' => ['nullable', 'array', 'max:12'],
             'skills.*' => ['string', 'max:60'],
-            'budget_min' => ['nullable', 'integer', 'min:0'],
-            'budget_max' => ['nullable', 'integer', 'gte:budget_min'],
+            'budget_min' => ['nullable', 'integer', 'min:1000'],
+            'budget_max' => ['nullable', 'integer', 'min:1000', 'gte:budget_min'],
             'budget_type' => ['sometimes', 'in:fixed,hourly'],
             'duration' => ['nullable', 'string', 'max:80'],
             'experience_level' => ['sometimes', 'in:entry,intermediate,expert'],

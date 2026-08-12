@@ -47,12 +47,97 @@ function HomePage() {
 
 function HowItWorks() {
   const { t } = usePreferences()
-  return <section className="how-page"><header><p className="eyebrow">{t('how.eyebrow', 'How TalentXpanse works')}</p><h1>{t('how.title', 'A clear process for better freelance work.')}</h1><p>{t('how.intro', 'Start with the role you need today. If you later need the other workspace, you can add it to the same account.')}</p></header><div className="how-grid"><article><p className="eyebrow">{t('how.for_freelancers', 'For freelancers')}</p><h2>{t('how.freelancer_title', 'Find and deliver great work.')}</h2><ol><li>{t('how.freelancer_step_1', 'Create a focused profile, portfolio, and optional CV.')}</li><li>{t('how.freelancer_step_2', 'Search jobs and spend Proposal Credits only on work you want.')}</li><li>{t('how.freelancer_step_3', 'Message clients, agree milestones, submit work, and build your review history.')}</li></ol><Link className="button button-primary" to="/register?role=freelancer">{t('how.create_freelancer', 'Create a freelancer account')}</Link></article><article><p className="eyebrow">{t('how.for_clients', 'For clients')}</p><h2>{t('how.client_title', 'Hire with confidence.')}</h2><ol><li>{t('how.client_step_1', 'Create a company workspace and post a clear job.')}</li><li>{t('how.client_step_2', 'Review proposals, portfolios, and trust history before you hire.')}</li><li>{t('how.client_step_3', 'Manage milestones, approve delivery, and leave a fair review.')}</li></ol><Link className="button button-outline" to="/register?role=client">{t('how.create_client', 'Create a client account')}</Link></article></div><section className="how-note"><b>{t('how.payment_notice', 'Payments are not yet live.')}</b><span>{t('how.payment_detail', 'TalentXpanse currently supports project delivery tracking. Secure payment collection and payouts will be added through a compliant payment partner later.')}</span></section><div className="guest-inline-actions"><Link to="/jobs">{t('how.browse_work', 'Browse open work')}</Link><Link to="/login">{t('how.already_account', 'Already have an account? Log in')}</Link></div></section>
+  const steps = [
+    ['01', 'how.step_one_title', 'Choose your starting point', 'how.step_one_detail', 'Create one account and begin as a freelancer or client. Add the other workspace later when you need it.'],
+    ['02', 'how.step_two_title', 'Find the right fit', 'how.step_two_detail', 'Search real job posts or professional profiles, then focus only on work and people that fit your goals.'],
+    ['03', 'how.step_three_title', 'Make a clear decision', 'how.step_three_detail', 'Use proposals, portfolios, CVs, messages, and formal offers to agree on the work before a project begins.'],
+    ['04', 'how.step_four_title', 'Deliver with a shared record', 'how.step_four_detail', 'Manage milestones, delivery, revisions, project updates, and reviews in one organised workspace.'],
+  ]
+  const confidencePoints = [
+    ['how.confidence_one_title', 'Professional profiles', 'how.confidence_one_detail', 'Skills, portfolio work, CVs, and experience give people useful context before they connect.'],
+    ['how.confidence_two_title', 'Project clarity', 'how.confidence_two_detail', 'Milestones, delivery records, revision requests, and scope changes keep important decisions visible.'],
+    ['how.confidence_three_title', 'Accountability tools', 'how.confidence_three_detail', 'Verification requests, reports, private reviews, and support paths help keep the marketplace professional.'],
+  ]
+
+  return <section className="how-page">
+    <section className="how-hero">
+      <div>
+        <p className="eyebrow">{t('how.eyebrow', 'How TalentXpanse works')}</p>
+        <h1>{t('how.title', 'From the first conversation to finished work, every step is clear.')}</h1>
+        <p>{t('how.intro', 'TalentXpanse gives clients and freelancers one practical place to discover a fit, agree on the work, and keep a project moving forward.')}</p>
+        <div className="how-hero-actions">
+          <Link className="button button-primary" to="/register">{t('how.create_account', 'Create your account')}</Link>
+          <Link className="button button-outline" to="/jobs">{t('how.explore_jobs', 'Explore the marketplace')}</Link>
+        </div>
+        <p className="how-account-note"><span aria-hidden="true">✓</span>{t('how.account_note', 'Start with one workspace. Add client or freelancer capabilities to the same sign-in whenever you are ready.')}</p>
+      </div>
+      <div className="how-journey-card" aria-label={t('how.journey_label', 'TalentXpanse project journey')}>
+        <p>{t('how.journey_eyebrow', 'YOUR WORK JOURNEY')}</p>
+        <ol>
+          {steps.map(([number, titleKey, titleFallback]) => <li key={number}><span>{number}</span><b>{t(titleKey, titleFallback)}</b></li>)}
+        </ol>
+        <div><span>{t('how.journey_footer', 'A shared workflow for serious work.')}</span><b>TX</b></div>
+      </div>
+    </section>
+
+    <section className="how-flow-section">
+      <div className="how-section-heading"><p className="eyebrow">{t('how.flow_eyebrow', 'The full workflow')}</p><h2>{t('how.flow_title', 'A simple path, without guessing what happens next.')}</h2><p>{t('how.flow_intro', 'Each stage gives both people the information and controls they need before moving forward.')}</p></div>
+      <ol className="how-steps">
+        {steps.map(([number, titleKey, titleFallback, detailKey, detailFallback]) => <li key={number}><span>{number}</span><div><h3>{t(titleKey, titleFallback)}</h3><p>{t(detailKey, detailFallback)}</p></div></li>)}
+      </ol>
+    </section>
+
+    <section className="how-role-section">
+      <div className="how-section-heading"><p className="eyebrow">{t('how.role_eyebrow', 'Built for both sides')}</p><h2>{t('how.role_title', 'Choose the experience you need today.')}</h2></div>
+      <div className="how-role-grid">
+        <article className="how-role-card freelancer">
+          <span className="how-role-icon" aria-hidden="true">F</span><p className="eyebrow">{t('how.for_freelancers', 'For freelancers')}</p><h3>{t('how.freelancer_title', 'Find and deliver great work.')}</h3>
+          <ol><li>{t('how.freelancer_step_1', 'Create a focused profile, portfolio, and optional CV.')}</li><li>{t('how.freelancer_step_2', 'Search jobs and spend Proposal Credits only on work you want.')}</li><li>{t('how.freelancer_step_3', 'Message clients, agree milestones, submit work, and build your review history.')}</li></ol>
+          <Link className="button button-primary" to="/register?role=freelancer">{t('how.create_freelancer', 'Create freelancer account')}</Link>
+        </article>
+        <article className="how-role-card client">
+          <span className="how-role-icon" aria-hidden="true">C</span><p className="eyebrow">{t('how.for_clients', 'For clients')}</p><h3>{t('how.client_title', 'Hire with confidence.')}</h3>
+          <ol><li>{t('how.client_step_1', 'Create a client workspace and post a clear job.')}</li><li>{t('how.client_step_2', 'Review proposals, portfolios, and trust history before you hire.')}</li><li>{t('how.client_step_3', 'Manage milestones, approve delivery, and leave a fair review.')}</li></ol>
+          <Link className="button button-outline" to="/register?role=client">{t('how.create_client', 'Create client account')}</Link>
+        </article>
+      </div>
+    </section>
+
+    <section className="how-confidence-section">
+      <div className="how-section-heading"><p className="eyebrow">{t('how.confidence_eyebrow', 'Work with confidence')}</p><h2>{t('how.confidence_title', 'A marketplace is more than a list of jobs.')}</h2></div>
+      <div className="how-confidence-grid">
+        {confidencePoints.map(([titleKey, titleFallback, detailKey, detailFallback], index) => <article key={titleKey}><span>{String(index + 1).padStart(2, '0')}</span><h3>{t(titleKey, titleFallback)}</h3><p>{t(detailKey, detailFallback)}</p></article>)}
+      </div>
+    </section>
+
+    <section className="how-final-cta">
+      <div><p className="eyebrow">{t('how.final_eyebrow', 'Ready when you are')}</p><h2>{t('how.final_title', 'Build better working relationships from the first step.')}</h2><p>{t('how.final_detail', 'Create a focused workspace, explore the marketplace, and make your next project easier to manage.')}</p></div>
+      <div><Link className="button button-primary" to="/register">{t('how.create_account', 'Create your account')}</Link><Link to="/login">{t('how.already_account', 'Already have an account? Log in')}</Link></div>
+    </section>
+  </section>
 }
 
 function AboutPage() {
   const { t } = usePreferences()
-  return <section className="guest-info-page"><header><p className="eyebrow">{t('about.eyebrow', 'About TalentXpanse')}</p><h1>{t('about.title', 'Built for ambitious work with a clear process.')}</h1><p>{t('about.intro', 'TalentXpanse is a Myanmar-first freelance marketplace designed around clarity, trust, and real project delivery.')}</p></header><div className="guest-info-grid"><article><span>01</span><h2>{t('about.expectations', 'Clear expectations')}</h2><p>{t('about.expectations_detail', 'People should understand the work, the proposal, and the next step before they commit.')}</p></article><article><span>02</span><h2>{t('about.practical', 'Practical workflow')}</h2><p>{t('about.practical_detail', 'Profiles, proposals, messages, milestones, and reviews support the full working relationship.')}</p></article><article><span>03</span><h2>{t('about.context', 'Local context')}</h2><p>{t('about.context_detail', 'Myanmar talent deserves a professional place to build experience and work with businesses near and far.')}</p></article></div><div className="guest-page-actions"><Link className="button button-primary" to="/jobs">{t('about.explore', 'Explore opportunities')}</Link><Link className="button button-outline" to="/how-it-works">{t('about.see_how', 'See how it works')}</Link></div></section>
+  const principles = [
+    ['01', 'about.expectations', 'Clear expectations', 'about.expectations_detail', 'People should understand the work, the proposal, and the next step before they commit.'],
+    ['02', 'about.practical', 'Practical workflow', 'about.practical_detail', 'Profiles, proposals, messages, milestones, and reviews support the full working relationship.'],
+    ['03', 'about.context', 'Local context', 'about.context_detail', 'Myanmar talent deserves a professional place to build experience and work with businesses near and far.'],
+    ['04', 'about.accountability', 'Thoughtful accountability', 'about.accountability_detail', 'Verification, reports, support requests, and documented project decisions make professional conduct easier to maintain.'],
+  ]
+
+  return <section className="guest-info-page why-page">
+    <section className="why-hero">
+      <div><p className="eyebrow">{t('about.eyebrow', 'Why TalentXpanse')}</p><h1>{t('about.title', 'Great freelance work deserves a clearer way to start and finish.')}</h1><p>{t('about.intro', 'TalentXpanse is a Myanmar-first freelance marketplace built to make professional collaboration feel more focused, fair, and organised.')}</p><div className="guest-page-actions"><Link className="button button-primary" to="/register">{t('about.join', 'Join TalentXpanse')}</Link><Link className="button button-outline" to="/how-it-works">{t('about.see_how', 'See how it works')}</Link></div></div>
+      <aside><span>TX</span><p>{t('about.hero_quote', 'Less uncertainty. More meaningful work.')}</p><small>{t('about.hero_detail', 'A practical home for discovering talent, making decisions, and keeping projects on track.')}</small></aside>
+    </section>
+
+    <section className="why-statement"><p className="eyebrow">{t('about.statement_eyebrow', 'What we are building for')}</p><h2>{t('about.statement_title', 'Not just introductions—better working relationships.')}</h2><p>{t('about.statement_detail', 'A job post is only the beginning. TalentXpanse brings the important moments around it into one connected experience: professional profiles, informed proposals, clear decisions, shared project progress, and a record people can rely on.')}</p></section>
+
+    <section className="why-principles"><div className="how-section-heading"><p className="eyebrow">{t('about.principles_eyebrow', 'The TalentXpanse standard')}</p><h2>{t('about.principles_title', 'Designed around the details that make work feel professional.')}</h2></div><div className="why-principles-grid">{principles.map(([number, titleKey, titleFallback, detailKey, detailFallback]) => <article key={number}><span>{number}</span><h3>{t(titleKey, titleFallback)}</h3><p>{t(detailKey, detailFallback)}</p></article>)}</div></section>
+
+    <section className="why-commitment"><div><p className="eyebrow">{t('about.commitment_eyebrow', 'For Myanmar, and beyond')}</p><h2>{t('about.commitment_title', 'Your skills should have room to grow.')}</h2><p>{t('about.commitment_detail', 'Whether you are building a freelance career, hiring for a growing business, or doing both, TalentXpanse helps you work with more context and less friction—in English or Myanmar.')}</p></div><div><Link className="button button-primary" to="/register">{t('about.join', 'Join TalentXpanse')}</Link><Link className="button button-outline" to="/jobs">{t('about.explore', 'Explore opportunities')}</Link></div></section>
+  </section>
 }
 
 function ContactPage() {

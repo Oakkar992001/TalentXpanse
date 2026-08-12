@@ -28,6 +28,11 @@ class Job extends Model
         return $this->hasMany(Proposal::class);
     }
 
+    public function contract()
+    {
+        return $this->hasOne(Contract::class);
+    }
+
     public function freelancerInvites()
     {
         return $this->hasMany(MarketplaceFreelancerInvite::class);

@@ -32,4 +32,11 @@ class MarketplaceNotificationController extends Controller
 
         return ['data' => ['success' => true]];
     }
+
+    public function clearAll(Request $request)
+    {
+        $deleted = $request->user()->marketplaceNotifications()->delete();
+
+        return ['data' => ['deleted' => $deleted]];
+    }
 }

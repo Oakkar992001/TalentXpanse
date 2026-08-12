@@ -182,7 +182,7 @@ export default function ProfileScreen() {
           <span>{profile?.profile_photo_url ? <img src={profile.profile_photo_url} alt={t('profile.photo_alt', 'Your profile')} /> : user.name?.slice(0, 1)}</span>
           <div><b>{t('profile.photo', 'Profile photo')}</b><small>{t('profile.photo_hint', 'JPG, PNG, or WebP · max 5 MB')}</small><label className="file-upload">{t('profile.change_photo', 'Change photo')}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadPhoto} /></label></div>
         </div>
-        <label>{t('profile.title', 'Professional title')}<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder={t('profile.title_hint', 'e.g. Laravel & React Developer')} /></label>
+        <label>{t('profile.title', 'Professional title')}<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder={t('profile.title_hint', 'Enter your professional title')} /></label>
         <fieldset className="profile-experience"><legend>{t('profile.experience_level', 'Experience level')} <small>{t('profile.experience_hint', 'Optional · helps clients understand your level')}</small></legend><div>{[
           ['entry', t('profile.experience_entry', 'Entry'), t('profile.experience_entry_detail', 'Building professional experience')],
           ['intermediate', t('profile.experience_intermediate', 'Intermediate'), t('profile.experience_intermediate_detail', 'Comfortable delivering independently')],
