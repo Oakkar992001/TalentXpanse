@@ -8,6 +8,8 @@ use App\Models\FreelancerProfile;
 use App\Models\OauthIdentity;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\MarketplaceProductAnalyticsService;
+use App\Services\MarketplaceTwoFactorService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +23,7 @@ class AuthController extends Controller
 {
     private const POLICY_VERSION = '2026-07-30';
 
-    public function register(Request $request)
+    public function register(Request $request, MarketplaceProductAnalyticsService $analytics)
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -47,18 +49,20 @@ class AuthController extends Controller
             return $user;
         });
         $user->sendEmailVerificationNotification();
+        $analytics->track($user, 'registered', ['method' => 'password', 'role' => $data['role']]);
 
         return response()->json([
-            ...$this->issueToken($user, 'talentxpanse-web', ['web'], 'member'),
+            ...$this->issueToken($request, $user, ['web'], 'member'),
             'user' => $this->userPayload($user->fresh('roles', 'freelancerProfile', 'clientProfile')),
         ], 201);
     }
 
-    public function login(Request $request)
+    public function login(Request $request, MarketplaceTwoFactorService $twoFactor)
     {
         $data = $request->validate([
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],
+            'two_factor_code' => ['nullable', 'string', 'max:32'],
         ]);
 
         $user = User::where('email', $data['email'])->first();
@@ -69,18 +73,20 @@ class AuthController extends Controller
         if ($user->status === 'suspended') {
             return response()->json(['message' => __('This account has been suspended.')], 403);
         }
+        $this->ensureTwoFactor($user, $data['two_factor_code'] ?? null, $twoFactor, false);
 
         return response()->json([
-            ...$this->issueToken($user, 'talentxpanse-web', ['web'], 'member'),
+            ...$this->issueToken($request, $user, ['web'], 'member'),
             'user' => $this->userPayload($user->load('roles', 'freelancerProfile', 'clientProfile')),
         ]);
     }
 
-    public function adminLogin(Request $request)
+    public function adminLogin(Request $request, MarketplaceTwoFactorService $twoFactor)
     {
         $data = $request->validate([
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],
+            'two_factor_code' => ['nullable', 'string', 'max:32'],
         ]);
         $user = User::where('email', $data['email'])->with('roles')->first();
 
@@ -90,24 +96,27 @@ class AuthController extends Controller
         if ($user->status === 'suspended') {
             return response()->json(['message' => __('This administrator account has been suspended.')], 403);
         }
+        $this->ensureTwoFactor($user, $data['two_factor_code'] ?? null, $twoFactor, true);
 
         return response()->json([
-            ...$this->issueToken($user, 'talentxpanse-admin', ['admin'], 'admin'),
+            ...$this->issueToken($request, $user, ['admin'], 'admin'),
             'user' => $this->userPayload($user->load('freelancerProfile', 'clientProfile')),
         ]);
     }
 
-    public function google(Request $request)
+    public function google(Request $request, MarketplaceProductAnalyticsService $analytics, MarketplaceTwoFactorService $twoFactor)
     {
         $data = $request->validate([
             'credential' => ['required', 'string'],
             'role' => ['nullable', 'in:client,freelancer'],
             'terms_accepted' => ['nullable', 'boolean'],
             'privacy_accepted' => ['nullable', 'boolean'],
+            'two_factor_code' => ['nullable', 'string', 'max:32'],
         ]);
         $claims = $this->verifyGoogleCredential($data['credential']);
 
-        $user = DB::transaction(function () use ($claims, $data) {
+        $created = false;
+        $user = DB::transaction(function () use ($claims, $data, &$created) {
             $identity = OauthIdentity::where('provider', 'google')->where('provider_id', $claims['sub'])->first();
 
             if ($identity) {
@@ -134,6 +143,7 @@ class AuthController extends Controller
                     'privacy_accepted_at' => now(),
                 ]);
                 $this->attachRole($user, $data['role'] ?? 'freelancer');
+                $created = true;
             }
 
             OauthIdentity::create(['user_id' => $user->id, 'provider' => 'google', 'provider_id' => $claims['sub']]);
@@ -141,9 +151,13 @@ class AuthController extends Controller
             return $user;
         });
         abort_if($user->status === 'suspended', 403, __('This account has been suspended.'));
+        $this->ensureTwoFactor($user, $data['two_factor_code'] ?? null, $twoFactor, false);
+        if ($created) {
+            $analytics->track($user, 'registered', ['method' => 'google', 'role' => $data['role'] ?? 'freelancer']);
+        }
 
         return response()->json([
-            ...$this->issueToken($user, 'talentxpanse-google', ['web'], 'member'),
+            ...$this->issueToken($request, $user, ['web'], 'member'),
             'user' => $this->userPayload($user->fresh('roles', 'freelancerProfile', 'clientProfile')),
         ]);
     }
@@ -194,16 +208,27 @@ class AuthController extends Controller
         }
     }
 
-    private function issueToken(User $user, string $name, array $abilities, string $sessionType): array
+    private function issueToken(Request $request, User $user, array $abilities, string $sessionType): array
     {
         $minutes = (int) config("marketplace_sessions.{$sessionType}_minutes");
         $expiresAt = now()->addMinutes($minutes);
-        $token = $user->createToken($name, $abilities, $expiresAt);
+        $device = Str::limit(trim($request->userAgent() ?: 'Browser session'), 100, '…');
+        $token = $user->createToken(ucfirst($sessionType)." · {$device}", $abilities, $expiresAt);
 
         return [
             'token' => $token->plainTextToken,
             'expires_at' => $expiresAt->toISOString(),
         ];
+    }
+
+    private function ensureTwoFactor(User $user, ?string $code, MarketplaceTwoFactorService $twoFactor, bool $adminLogin): void
+    {
+        if ($adminLogin && config('marketplace_security.admin_mfa_required') && ! $user->two_factor_confirmed_at) {
+            throw ValidationException::withMessages(['two_factor_code' => 'Administrator two-factor authentication must be enrolled before this account can sign in.']);
+        }
+        if ($user->two_factor_confirmed_at && ! $twoFactor->verify($user, $code)) {
+            throw ValidationException::withMessages(['two_factor_code' => 'Enter the current authenticator or recovery code to continue.']);
+        }
     }
 
     private function userPayload(User $user): array

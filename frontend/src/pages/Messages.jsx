@@ -36,6 +36,7 @@ export default function MessagesScreen() {
   const [attachments, setAttachments] = useState([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [loadingConversations, setLoadingConversations] = useState(true)
   const [showJumpToLatest, setShowJumpToLatest] = useState(false)
   const selectedId = params.get('conversation')
   const isClient = user?.roles?.includes('client')
@@ -44,28 +45,44 @@ export default function MessagesScreen() {
   const stayAtLatest = useRef(true)
   const previousConversationId = useRef(null)
   const loadedConversationId = useRef(null)
+  // Keep the user's intended chat outside React's asynchronous render cycle.
+  // A delayed refresh for another conversation must never replace it.
+  const activeConversationId = useRef(selectedId)
   const refreshInFlight = useRef(false)
 
   const loadConversation = useCallback(async (conversationId, updateUrl = true) => {
+    const requestedId = String(conversationId)
+    if (updateUrl) {
+      activeConversationId.current = requestedId
+      setParams((current) => current.get('conversation') === requestedId ? current : { conversation: requestedId })
+    }
     try {
-      if (String(conversationId) !== String(loadedConversationId.current)) stayAtLatest.current = true
+      if (requestedId !== String(loadedConversationId.current)) stayAtLatest.current = true
       const { data } = await api.get(`/conversations/${conversationId}`)
+      if (String(activeConversationId.current) !== String(data.data.id)) return
       loadedConversationId.current = data.data.id
       setConversation(data.data)
-      if (updateUrl) setParams((current) => current.get('conversation') === String(conversationId) ? current : { conversation: conversationId })
-    } catch (requestError) { setError(errorMessage(requestError)) }
+    } catch (requestError) {
+      if (String(activeConversationId.current) === requestedId) setError(errorMessage(requestError))
+    }
   }, [errorMessage, setParams])
 
-  const loadConversations = useCallback(async (preferredId = selectedId, updateUrl = true) => {
+  const loadConversations = useCallback(async (preferredId, updateUrl = true, showLoading = true) => {
+    if (showLoading) setLoadingConversations(true)
     try {
       const { data } = await api.get('/conversations')
       setConversations(data.data)
-      const nextId = preferredId || data.data[0]?.id
+      const nextId = preferredId || activeConversationId.current || data.data[0]?.id
       if (nextId) await loadConversation(nextId, updateUrl)
-    } catch (requestError) { setError(errorMessage(requestError)) }
-  }, [errorMessage, loadConversation, selectedId])
+    } catch (requestError) { setError(errorMessage(requestError)) } finally { if (showLoading) setLoadingConversations(false) }
+  }, [errorMessage, loadConversation])
 
   useEffect(() => { if (user?.id) loadConversations() }, [loadConversations, user?.id])
+  useEffect(() => {
+    if (!selectedId || String(selectedId) === String(activeConversationId.current)) return
+    activeConversationId.current = String(selectedId)
+    loadConversation(selectedId, false)
+  }, [loadConversation, selectedId])
   useEffect(() => {
     if (!isClient) return
     api.get('/conversations/startable-proposals').then(({ data }) => setStartable(data.data)).catch(() => setStartable([]))
@@ -78,10 +95,10 @@ export default function MessagesScreen() {
     const refreshConversations = async () => {
       if (document.hidden || refreshInFlight.current) return
       refreshInFlight.current = true
-      const activeId = selectedId || conversation?.id
+      const activeId = activeConversationId.current || conversation?.id
       try {
         if (!activeId) {
-          await loadConversations(undefined, false)
+          await loadConversations(undefined, false, false)
           return
         }
 
@@ -110,7 +127,7 @@ export default function MessagesScreen() {
       if (fallback) window.clearInterval(fallback)
       window.removeEventListener('focus', refreshOnFocus)
     }
-  }, [conversation?.id, errorMessage, loadConversation, loadConversations, selectedId, user?.id])
+  }, [conversation?.id, errorMessage, loadConversation, loadConversations, user?.id])
   useEffect(() => {
     const changedConversation = String(previousConversationId.current) !== String(conversation?.id)
     if (changedConversation) stayAtLatest.current = true
@@ -197,7 +214,7 @@ export default function MessagesScreen() {
     <div className="messages-layout">
       <aside className="conversation-list" aria-label={t('messages.conversations', 'Conversations')}>
         <div className="conversation-list-title"><h2>{t('messages.conversations', 'Conversations')}</h2><span>{t('messages.unread', `${conversations.reduce((total, item) => total + item.unread_count, 0)} unread`, { count: conversations.reduce((total, item) => total + item.unread_count, 0) })}</span></div>
-        {conversations.length ? conversations.map((item) => <button className={String(item.id) === String(conversation?.id) ? 'selected' : ''} key={item.id} onClick={() => loadConversation(item.id)}><ContactAvatar user={item.other_user} /><div><b>{item.other_user?.name}</b><small>{item.job?.title}</small><p>{item.last_message?.body || (item.type === 'project' ? t('messages.project_ready', 'Project chat is ready.') : t('messages.conversation_started', 'Conversation started.'))}</p></div>{item.unread_count > 0 && <em>{item.unread_count}</em>}</button>) : <p className="empty-panel">{t('messages.no_conversations', 'No conversations yet.')}</p>}
+        {loadingConversations ? <div className="conversation-list-loading" aria-live="polite"><span /><span /><p>{t('messages.loading_conversations', 'Loading conversations...')}</p></div> : conversations.length ? conversations.map((item) => <button className={String(item.id) === String(conversation?.id) ? 'selected' : ''} key={item.id} onClick={() => loadConversation(item.id)}><ContactAvatar user={item.other_user} /><div><b>{item.other_user?.name}</b><small>{item.job?.title}</small><p>{item.last_message?.body || (item.type === 'project' ? t('messages.project_ready', 'Project chat is ready.') : t('messages.conversation_started', 'Conversation started.'))}</p></div>{item.unread_count > 0 && <em>{item.unread_count}</em>}</button>) : <p className="empty-panel">{t('messages.no_conversations', 'No conversations yet.')}</p>}
         {isClient && startable.length > 0 && <div className="startable-list"><h3>{t('messages.start_proposal', 'Start from a proposal')}</h3>{startable.map((proposal) => <button key={proposal.id} disabled={busy} onClick={() => startConversation(proposal)}><ContactAvatar user={proposal.freelancer} /><div><b>{proposal.freelancer?.name}</b><small>{proposal.job?.title}</small></div><span>{t('nav.messages', 'Message')}</span></button>)}</div>}
       </aside>
       <main className="chat-panel">

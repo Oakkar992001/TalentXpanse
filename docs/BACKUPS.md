@@ -29,3 +29,25 @@ Perform restores in a separate staging database only. Never test a backup by res
 5. Record the backup date, restore duration, data checked, operator, and result.
 
 Run and document this drill at least quarterly and after any major database or storage change.
+
+## Windows / XAMPP recovery protection
+
+After a local recovery, do not overwrite the only working copy of `C:\xampp\mysql\data`. Keep a dated snapshot and verify a fresh export can be restored to a separate database.
+
+`backend/deploy/scripts/backup-mysql.ps1` supports a daily Windows Task Scheduler job for XAMPP or another local MySQL/MariaDB server. Create a MySQL defaults file outside the repository (for example `C:\secure\talentxpanse-backup.cnf`) with restricted permissions:
+
+```ini
+[client]
+host=127.0.0.1
+port=3307
+user=talentxpanse_backup
+password=use-a-dedicated-long-random-password
+```
+
+Create a dedicated database user with read/lock/trigger/event access appropriate for `mysqldump`; do not run scheduled backups as the application database owner where avoidable. Then schedule PowerShell daily:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\Project\TalentXpanse\backend\deploy\scripts\backup-mysql.ps1 -DefaultsFile C:\secure\talentxpanse-backup.cnf -Database talentxpanse -BackupDirectory D:\TalentXpanseBackups -GpgRecipient operations@example.com
+```
+
+Use `-GpgRecipient` after importing the operations public key so the retained copies are encrypted. Store a second encrypted copy outside the local PC. Run a restore drill after XAMPP recovery, then monthly while the project is in beta.

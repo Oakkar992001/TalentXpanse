@@ -125,6 +125,20 @@ class ProposalCreditService
         return $this->grantCredits($user, $amount, 'purchased', now()->addDays(self::PURCHASED_EXPIRY_DAYS), $reference);
     }
 
+    public function grantOnboardingCredits(User $user, int $amount): array
+    {
+        return DB::transaction(function () use ($user, $amount) {
+            $lockedUser = User::query()->lockForUpdate()->findOrFail($user->id);
+            if ($lockedUser->onboarding_rewarded_at) {
+                throw ValidationException::withMessages(['reward' => 'This profile reward was already claimed.']);
+            }
+            $grant = $this->grantCredits($lockedUser, $amount, 'onboarding_bonus', now()->addDays(self::FREE_EXPIRY_DAYS), 'Job-ready profile onboarding reward');
+            $lockedUser->update(['onboarding_rewarded_at' => now()]);
+
+            return ['grant' => $grant, 'balance' => $this->accountFor($lockedUser)->balance];
+        });
+    }
+
     public function summaryFor(User $user): array
     {
         $account = $this->accountFor($user);
@@ -381,6 +395,7 @@ class ProposalCreditService
             'premium_monthly' => 'Premium monthly',
             'purchased' => 'Purchased',
             'proposal_refund' => 'Cancellation refund',
+            'onboarding_bonus' => 'Profile reward',
             'legacy_transition' => 'Existing balance',
             default => 'Proposal credits',
         };

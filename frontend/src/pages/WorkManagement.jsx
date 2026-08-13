@@ -112,12 +112,14 @@ export default function WorkManagementScreen() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [credits, setCredits] = useState(null)
   const [newContractId, setNewContractId] = useState(null)
   const isClient = role === 'client'
   const endpoint = isClient ? '/jobs/mine' : '/proposals/mine'
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ showLoading = true } = {}) => {
+    if (showLoading) setLoading(true)
     setError('')
     try {
       const [work, invitationResponse] = await Promise.all([
@@ -128,6 +130,8 @@ export default function WorkManagementScreen() {
       if (invitationResponse) setInvites(invitationResponse.data.data)
     } catch (requestError) {
       setError(errorMessage(requestError))
+    } finally {
+      if (showLoading) setLoading(false)
     }
   }, [endpoint, errorMessage, isClient])
 
@@ -236,6 +240,6 @@ export default function WorkManagementScreen() {
       </article>)}
     </section>}
 
-    {!items.length ? <section className="work-empty"><h2>{isClient ? 'No job posts yet' : 'No proposals yet'}</h2><p>{isClient ? 'Create a detailed job post to start receiving proposals.' : 'Search the marketplace and apply to work that fits your skills.'}</p><Link className="button button-outline" to={isClient ? '/dashboard?role=client&postJob=1' : '/search?scope=jobs'}>{isClient ? 'Post your first job' : 'Browse opportunities'}</Link></section> : <div className="work-list">{isClient ? items.map((job) => <ClientJobCard key={job.id} job={job} busy={busy} onUpdate={updateJob} />) : items.map((proposal) => <FreelancerProposalCard key={proposal.id} proposal={proposal} busy={busy} onWithdraw={withdraw} onRespondOffer={respondOffer} contractId={newContractId} />)}</div>}
+    {loading ? <section className="work-loading" aria-live="polite"><span /><span /><p>Loading your {isClient ? 'job posts' : 'proposals'}...</p></section> : !items.length ? <section className="work-empty"><h2>{isClient ? 'No job posts yet' : 'No proposals yet'}</h2><p>{isClient ? 'Create a detailed job post to start receiving proposals.' : 'Search the marketplace and apply to work that fits your skills.'}</p><Link className="button button-outline" to={isClient ? '/dashboard?role=client&postJob=1' : '/search?scope=jobs'}>{isClient ? 'Post your first job' : 'Browse opportunities'}</Link></section> : <div className="work-list">{isClient ? items.map((job) => <ClientJobCard key={job.id} job={job} busy={busy} onUpdate={updateJob} />) : items.map((proposal) => <FreelancerProposalCard key={proposal.id} proposal={proposal} busy={busy} onWithdraw={withdraw} onRespondOffer={respondOffer} contractId={newContractId} />)}</div>}
   </section>
 }

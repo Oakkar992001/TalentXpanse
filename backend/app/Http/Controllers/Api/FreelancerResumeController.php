@@ -6,16 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Models\FreelancerResume;
 use App\Models\Proposal;
 use App\Support\MarketplaceStorage;
+use App\Services\MarketplaceUploadSafetyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class FreelancerResumeController extends Controller
 {
-    public function store(Request $request)
+    public function store(Request $request, MarketplaceUploadSafetyService $safety)
     {
         $this->ensureFreelancer($request);
         $request->validate(['resume' => ['required', 'file', 'mimes:pdf', 'max:10240']]);
         $file = $request->file('resume');
+        $safety->inspect($file, 'freelancer_resume');
         $existing = FreelancerResume::where('user_id', $request->user()->id)->first();
         $path = $file->store("resumes/{$request->user()->id}", MarketplaceStorage::privateDisk());
         $resume = FreelancerResume::updateOrCreate(['user_id' => $request->user()->id], [

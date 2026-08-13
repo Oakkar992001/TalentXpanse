@@ -145,6 +145,18 @@ function ContactPage() {
   return <section className="guest-info-page contact-page"><header><p className="eyebrow">{t('contact.eyebrow', 'Contact and support')}</p><h1>{t('contact.title', 'Support that respects your work.')}</h1><p>{t('contact.intro', 'We are preparing a dedicated support experience alongside live payments and account-verification processes.')}</p></header><div className="contact-expectation"><div><b>{t('contact.today', 'What you can do today')}</b><p>{t('contact.today_detail', 'Create an account to explore the marketplace, build a profile, post a job, or follow an active project.')}</p></div><div><b>{t('contact.next', 'What comes next')}</b><p>{t('contact.next_detail', 'In-product support, payment assistance, and account-verification help will launch with the relevant live features.')}</p></div></div><div className="guest-page-actions"><Link className="button button-primary" to="/register">{t('contact.create_account', 'Create an account')}</Link><Link className="button button-outline" to="/how-it-works">{t('contact.learn_workflow', 'Learn the workflow')}</Link></div><div className="guest-inline-actions"><Link to="/terms">{t('policy.terms_title', 'Terms of use')}</Link><Link to="/privacy">{t('policy.privacy_title', 'Privacy')}</Link><Link to="/marketplace-rules">{t('policy.rules_title', 'Marketplace rules')}</Link></div></section>
 }
 
+function HelpPage() {
+  const sections = [
+    ['Proposal Credits', 'Freelancers receive monthly Proposal Credits. Credits are used when submitting a proposal, not when a client hires. Free monthly credits have an expiry and balance cap, so they cannot be collected indefinitely. Credits are returned only if a client cancels a job before hiring anyone.'],
+    ['Staying safe', 'Keep proposals, messages, scope changes, and delivery records on TalentXpanse. Never send passwords, one-time codes, NRC images, or payment credentials in chat. Report suspicious jobs, profiles, or messages from the relevant page.'],
+    ['Verification', 'Identity verification is reviewed by TalentXpanse using private NRC front and back images. It is optional during beta but helps people make more informed decisions. Company verification is available after a client adds company details.'],
+    ['Projects, disputes, and support', 'Use milestones, delivery submissions, revision requests, and formal scope changes before escalating a problem. Project support creates a documented review path. Reliability concerns are reviewed fairly, and confirmed negative decisions can be appealed from Settings.'],
+    ['Payment status', 'Payments are not live during this open beta. TalentXpanse currently records milestone and project workflow only; do not send payment details through chat. A payment provider, funding, release, refund, and dispute rules will be announced before money moves through the platform.'],
+    ['Account security', 'Use a unique password, verify your email once real email delivery is configured, and turn on two-factor authentication from Settings. You can inspect signed-in devices and sign out other sessions at any time.'],
+  ]
+  return <section className="guest-info-page help-page"><header><p className="eyebrow">TalentXpanse Help</p><h1>Clear answers for safer freelance work.</h1><p>Practical guidance for using the marketplace during open beta. This center will grow with live support and payments.</p></header><div className="help-grid">{sections.map(([title, body], index) => <details key={title} open={index === 0}><summary><span>{String(index + 1).padStart(2, '0')}</span><b>{title}</b><i>+</i></summary><p>{body}</p></details>)}</div><div className="guest-page-actions"><Link className="button button-primary" to="/how-it-works">See the marketplace workflow</Link><Link className="button button-outline" to="/contact">Contact and support</Link></div></section>
+}
+
 function PolicyPage({ type }) {
   const { t } = usePreferences()
   const contents = {
@@ -159,6 +171,7 @@ function PolicyPage({ type }) {
 export default function Page({ name }) {
   if (name === 'Home') return <HomePage />
   if (name === 'HowItWorks') return <HowItWorks />
+  if (name === 'Help') return <HelpPage />
   if (['Terms', 'Privacy', 'MarketplaceRules'].includes(name)) return <PolicyPage type={name} />
   return name === 'About' ? <AboutPage /> : <ContactPage />
 }

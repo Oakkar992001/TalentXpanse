@@ -11,7 +11,10 @@ use App\Models\FreelancerProfile;
 use App\Models\IdentityVerificationSubmission;
 use App\Models\Job;
 use App\Models\MarketplaceAdminAuditLog;
+use App\Models\MarketplaceFeedback;
 use App\Models\MarketplacePaymentRecord;
+use App\Models\MarketplaceProductEvent;
+use App\Models\MarketplaceReliabilityAppeal;
 use App\Models\MarketplaceReliabilityEvent;
 use App\Models\MarketplaceReport;
 use App\Models\Proposal;
@@ -48,6 +51,9 @@ class AdminController extends Controller
             'payment_holds' => Contract::where('payment_hold_status', 'on_hold')->count(),
             'pending_reliability_cases' => MarketplaceReliabilityEvent::where('status', 'pending')->count(),
             'audit_entries' => MarketplaceAdminAuditLog::count(),
+            'new_feedback' => MarketplaceFeedback::where('status', 'new')->count(),
+            'open_appeals' => MarketplaceReliabilityAppeal::whereIn('status', ['open', 'under_review'])->count(),
+            'funnel' => $this->funnelMetrics(),
         ]];
     }
 
@@ -336,6 +342,49 @@ class AdminController extends Controller
         ]];
     }
 
+    public function feedback(Request $request)
+    {
+        $this->ensureAdmin($request);
+
+        return ['data' => MarketplaceFeedback::query()->with(['user', 'reviewer'])->latest()->paginate(30)];
+    }
+
+    public function updateFeedback(Request $request, MarketplaceFeedback $feedback, MarketplaceAdminAuditService $audit)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'status' => ['required', Rule::in(['new', 'reviewed', 'planned', 'resolved'])],
+            'resolution_note' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $feedback->update($data + ['reviewed_by' => $request->user()->id, 'reviewed_at' => now()]);
+        $audit->log($request->user(), "feedback.{$feedback->status}", $feedback, $data['resolution_note'] ?? 'Feedback status updated.', ['status' => $feedback->status]);
+
+        return ['data' => $feedback->fresh(['user', 'reviewer'])];
+    }
+
+    public function appeals(Request $request)
+    {
+        $this->ensureAdmin($request);
+
+        return ['data' => MarketplaceReliabilityAppeal::query()->with(['user.roles', 'reliabilityEvent', 'reviewer'])->latest()->paginate(30)];
+    }
+
+    public function updateAppeal(Request $request, MarketplaceReliabilityAppeal $appeal, MarketplaceNotificationService $notifications, MarketplaceAdminAuditService $audit)
+    {
+        $this->ensureAdmin($request);
+        $data = $request->validate([
+            'status' => ['required', Rule::in(['under_review', 'upheld', 'adjusted', 'dismissed'])],
+            'resolution_note' => ['required_if:status,upheld,adjusted,dismissed', 'nullable', 'string', 'max:2000'],
+        ]);
+        $appeal->update($data + ['reviewed_by' => $request->user()->id, 'reviewed_at' => now()]);
+        $audit->log($request->user(), "reliability_appeal.{$appeal->status}", $appeal, $data['resolution_note'] ?? 'Appeal status updated.', ['status' => $appeal->status]);
+        if (in_array($appeal->status, ['upheld', 'adjusted', 'dismissed'], true)) {
+            $notifications->send($appeal->user, 'reliability_appeal_reviewed', 'Reliability appeal reviewed', $data['resolution_note'] ?: 'TalentXpanse completed the appeal review.', '/settings/reliability');
+        }
+
+        return ['data' => $appeal->fresh(['user', 'reliabilityEvent', 'reviewer'])];
+    }
+
     public function updateReliabilityEvent(Request $request, MarketplaceReliabilityEvent $reliabilityEvent, MarketplaceReliabilityService $reliability, MarketplaceNotificationService $notifications, MarketplaceAdminAuditService $audit)
     {
         $this->ensureAdmin($request);
@@ -355,6 +404,21 @@ class AdminController extends Controller
     private function ensureAdmin(Request $request): void
     {
         abort_unless($request->user()->hasRole('admin'), 403, 'Administrator access is required.');
+    }
+
+    private function funnelMetrics(): array
+    {
+        $since = now()->subDays(30);
+        $events = MarketplaceProductEvent::query()->where('occurred_at', '>=', $since);
+
+        return [
+            'period_label' => 'Last 30 days',
+            'registered' => User::where('created_at', '>=', $since)->count(),
+            'profiles_updated' => (clone $events)->whereIn('event', ['freelancer_profile_updated', 'client_profile_updated'])->count(),
+            'jobs_posted' => (clone $events)->where('event', 'job_posted')->count(),
+            'proposals_submitted' => (clone $events)->where('event', 'proposal_submitted')->count(),
+            'contracts_started' => (clone $events)->where('event', 'contract_started')->count(),
+        ];
     }
 
     private function purgeIdentityDocuments(IdentityVerificationSubmission $submission): void

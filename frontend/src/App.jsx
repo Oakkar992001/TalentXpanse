@@ -69,7 +69,7 @@ function RequireAuth() {
 }
 
 function App() {
-  const pages = [['/', 'Home'], ['/how-it-works', 'HowItWorks'], ['/about', 'About'], ['/contact', 'Contact']]
+  const pages = [['/', 'Home'], ['/how-it-works', 'HowItWorks'], ['/about', 'About'], ['/help', 'Help'], ['/contact', 'Contact']]
 
   return <PreferencesProvider><AuthProvider><NotificationProvider><ConfirmProvider><BrowserRouter><AppErrorBoundary><Suspense fallback={<RouteFallback />}><Routes>
     <Route path="/admin/login" element={<AdminLoginScreen />} />

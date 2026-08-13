@@ -30,7 +30,7 @@ function confirmationForAction(path, payload) {
 export function AdminLoginScreen() {
   const { adminLogin, errorMessage, sessionExpired, user } = useAuth()
   const navigate = useNavigate()
-  const [form, setForm] = useState({ email: '', password: '' })
+  const [form, setForm] = useState({ email: '', password: '', two_factor_code: '' })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -59,6 +59,7 @@ export function AdminLoginScreen() {
     <form onSubmit={submit}>
       <label>Work email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
       <label>Password<input required type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label>
+      <label>Authenticator or recovery code <small>Required after administrator MFA is enabled.</small><input inputMode="numeric" autoComplete="one-time-code" value={form.two_factor_code} onChange={(event) => setForm({ ...form, two_factor_code: event.target.value })} /></label>
       <button disabled={busy} className="button button-primary">{busy ? 'Signing in…' : 'Sign in to admin'}</button>
     </form>
     <small>There is no public administrator registration.</small>
@@ -81,7 +82,7 @@ export function AdminDashboardScreen() {
   const [lastRefreshed, setLastRefreshed] = useState(null)
   const refreshingRef = useRef(false)
   const isAdmin = user?.roles?.includes('admin')
-  const endpoint = tab === 'users' ? '/admin/users' : tab === 'jobs' ? '/admin/jobs' : tab === 'support' ? '/admin/support-requests' : tab === 'payments' ? '/admin/payment-records' : tab === 'audit' ? '/admin/audit-logs' : tab === 'verifications' ? '/admin/verifications' : tab === 'reliability' ? '/admin/reliability' : '/admin/reports'
+  const endpoint = tab === 'users' ? '/admin/users' : tab === 'jobs' ? '/admin/jobs' : tab === 'support' ? '/admin/support-requests' : tab === 'payments' ? '/admin/payment-records' : tab === 'audit' ? '/admin/audit-logs' : tab === 'verifications' ? '/admin/verifications' : tab === 'reliability' ? '/admin/reliability' : tab === 'feedback' ? '/admin/feedback' : tab === 'appeals' ? '/admin/appeals' : '/admin/reports'
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (refreshingRef.current) return
@@ -148,13 +149,17 @@ export function AdminDashboardScreen() {
 
   return <div className="admin-shell"><aside>
     <div className="admin-brand">Talent<span>Xpanse</span><small>Operations</small></div>
-    <nav>{[['overview', 'Overview'], ['reports', 'Reports'], ['support', 'Project support'], ['reliability', 'Reliability'], ['verifications', 'Verifications'], ['payments', 'Payment safety'], ['audit', 'Audit trail'], ['jobs', 'Jobs'], ['users', 'Users']].map(([value, title]) => <button key={value} className={tab === value ? 'active' : ''} onClick={() => setTab(value)}>{title}</button>)}</nav>
-    <div className="admin-account"><b>{user.name}</b><small>{user.email}</small><button onClick={signOut}>Log out</button></div>
+    <nav>{[['overview', 'Overview'], ['feedback', 'Beta feedback'], ['appeals', 'Appeals'], ['reports', 'Reports'], ['support', 'Project support'], ['reliability', 'Reliability'], ['verifications', 'Verifications'], ['payments', 'Payment safety'], ['audit', 'Audit trail'], ['jobs', 'Jobs'], ['users', 'Users']].map(([value, title]) => <button key={value} className={tab === value ? 'active' : ''} onClick={() => setTab(value)}>{title}</button>)}</nav>
+    <div className="admin-account"><b>{user.name}</b><small>{user.email}</small><button onClick={() => navigate('/settings/security')}>Security & MFA</button><button onClick={signOut}>Log out</button></div>
   </aside><main>
     <header><div><p className="eyebrow">Administrator console</p><h1>{tab === 'overview' ? 'Marketplace overview' : label(tab)}</h1></div><div className="admin-header-actions"><small>{lastRefreshed ? `Auto-updated ${lastRefreshed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Loading current data'}</small><span className="admin-status">Live monitoring</span></div></header>
     {error && <p className="form-notice">{error}</p>}
     {!dashboard ? <p className="admin-loading">Loading operational data…</p> : <>
-      {tab === 'overview' && <section className="admin-metrics">{[['Users', dashboard.users], ['Open jobs', dashboard.open_jobs], ['Proposals', dashboard.proposals], ['Active contracts', dashboard.active_contracts], ['Content reports', dashboard.open_reports], ['Project support', dashboard.open_support_requests], ['Reliability backlog', dashboard.pending_reliability_cases], ['Payment holds', dashboard.payment_holds], ['Audit entries', dashboard.audit_entries], ['Suspended users', dashboard.suspended_users]].map(([name, value]) => <article key={name}><small>{name}</small><b>{value}</b></article>)}</section>}
+      {tab === 'overview' && <><section className="admin-metrics">{[['Users', dashboard.users], ['Open jobs', dashboard.open_jobs], ['Proposals', dashboard.proposals], ['Active contracts', dashboard.active_contracts], ['New feedback', dashboard.new_feedback], ['Open appeals', dashboard.open_appeals], ['Content reports', dashboard.open_reports], ['Project support', dashboard.open_support_requests], ['Reliability backlog', dashboard.pending_reliability_cases], ['Payment holds', dashboard.payment_holds], ['Audit entries', dashboard.audit_entries], ['Suspended users', dashboard.suspended_users]].map(([name, value]) => <article key={name}><small>{name}</small><b>{value}</b></article>)}</section><section className="admin-funnel"><header><div><p className="eyebrow">Product funnel</p><h2>{dashboard.funnel?.period_label || 'Last 30 days'}</h2><p>Operational product events only—no message, CV, verification, or payment contents are stored here.</p></div></header><div>{[['Registered', dashboard.funnel?.registered], ['Profile updates', dashboard.funnel?.profiles_updated], ['Jobs posted', dashboard.funnel?.jobs_posted], ['Proposals sent', dashboard.funnel?.proposals_submitted], ['Contracts started', dashboard.funnel?.contracts_started]].map(([label, value]) => <article key={label}><small>{label}</small><b>{value || 0}</b></article>)}</div></section></>}
+
+      {tab === 'feedback' && <section className="admin-table"><p>Beta feedback is private to the operations team. Mark every item with an honest next step so contributors know it was handled.</p>{items.length ? <table><thead><tr><th>Feedback</th><th>Area</th><th>Member</th><th>Status</th><th>Action</th></tr></thead><tbody>{items.map((feedback) => <tr key={feedback.id}><td><p className="report-preview">{feedback.message}</p>{feedback.rating && <small>{'★'.repeat(feedback.rating)} · {new Date(feedback.created_at).toLocaleDateString()}</small>}</td><td>{label(feedback.area)}</td><td>{feedback.user?.name || 'Deleted user'}</td><td><span className={`admin-pill ${feedback.status}`}>{label(feedback.status)}</span></td><td><select disabled={busy === `/admin/feedback/${feedback.id}`} value={feedback.status} onChange={(event) => action(`/admin/feedback/${feedback.id}`, { status: event.target.value })}><option value="new">New</option><option value="reviewed">Reviewed</option><option value="planned">Planned</option><option value="resolved">Resolved</option></select></td></tr>)}</tbody></table> : <p className="admin-empty">No beta feedback yet.</p>}</section>}
+
+      {tab === 'appeals' && <section className="admin-table"><p>Appeals are a second review of a confirmed reliability decision. Record a clear resolution note; changing the underlying reliability score remains a deliberate operations action.</p>{items.length ? <table><thead><tr><th>Member</th><th>Appeal</th><th>Decision</th><th>Status</th><th>Action</th></tr></thead><tbody>{items.map((appeal) => <tr key={appeal.id}><td><b>{appeal.user?.name || 'Removed user'}</b><small>{appeal.user?.email}</small></td><td><p className="report-preview">{appeal.reason}</p></td><td>{appeal.reliability_event?.event_type ? label(appeal.reliability_event.event_type) : 'Removed decision'}</td><td><span className={`admin-pill ${appeal.status}`}>{label(appeal.status)}</span></td><td><div><select disabled={busy === `/admin/appeals/${appeal.id}`} value={appeal.status} onChange={(event) => action(`/admin/appeals/${appeal.id}`, { status: event.target.value, resolution_note: event.target.value === 'under_review' ? null : 'Appeal reviewed by TalentXpanse operations.' })}><option value="open">Open</option><option value="under_review">Under review</option><option value="upheld">Upheld</option><option value="adjusted">Adjusted</option><option value="dismissed">Dismissed</option></select></div></td></tr>)}</tbody></table> : <p className="admin-empty">No reliability appeals are waiting.</p>}</section>}
 
       {tab === 'reports' && <section className="admin-table"><p>Review the reported item before resolving the report. Account and content actions remain deliberate, separate decisions.</p>
         {items.length ? <table><thead><tr><th>Reported item</th><th>Reason</th><th>Reporter</th><th>Status</th><th>Action</th></tr></thead><tbody>{items.map((report) => <tr key={report.id}>

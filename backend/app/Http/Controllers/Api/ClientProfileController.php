@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ClientProfile;
 use App\Services\TrustSummaryService;
+use App\Services\MarketplaceProductAnalyticsService;
 use Illuminate\Http\Request;
 
 class ClientProfileController extends Controller
@@ -16,7 +17,7 @@ class ClientProfileController extends Controller
         return ['data' => $this->payload($request, $trust)];
     }
 
-    public function update(Request $request, TrustSummaryService $trust)
+    public function update(Request $request, TrustSummaryService $trust, MarketplaceProductAnalyticsService $analytics)
     {
         $this->ensureClient($request);
         $data = $request->validate([
@@ -29,6 +30,7 @@ class ClientProfileController extends Controller
 
         $data['company_name'] = filled($data['company_name'] ?? null) ? $data['company_name'] : null;
         ClientProfile::firstOrCreate(['user_id' => $request->user()->id])->update($data);
+        $analytics->track($request->user(), 'client_profile_updated');
 
         return ['data' => $this->payload($request, $trust)];
     }

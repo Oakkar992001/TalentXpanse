@@ -6,17 +6,19 @@ import { useConfirmation } from '../contexts/ConfirmContext'
 import AccountMenu from '../components/AccountMenu'
 import GlobalSearch from '../components/GlobalSearch'
 import NotificationMenu from '../components/NotificationMenu'
+import BetaFeedbackButton from '../components/BetaFeedbackButton'
 import '../app-polish.css'
 
-const publicLinks = [['/jobs', 'nav.explore_marketplace', 'Explore marketplace'], ['/how-it-works', 'nav.how_it_works', 'How it works'], ['/about', 'nav.why_talentxpanse', 'Why TalentXpanse']]
-const clientLinks = [['Overview', '/dashboard?role=client', 'nav.overview'], ['My profile', '/workspace-setup?role=client', 'nav.profile'], ['Messages', '/messages', 'nav.messages'], ['Projects', '/projects', 'nav.projects']]
-const freelancerLinks = [['Overview', '/dashboard?role=freelancer', 'nav.overview'], ['My profile', '/profile', 'nav.profile'], ['Messages', '/messages', 'nav.messages'], ['Projects', '/projects', 'nav.projects']]
+const publicLinks = [['/jobs', 'nav.explore_marketplace', 'Explore marketplace'], ['/how-it-works', 'nav.how_it_works', 'How it works'], ['/help', 'nav.help', 'Help'], ['/about', 'nav.why_talentxpanse', 'Why TalentXpanse']]
+const clientLinks = [['Homepage', '/dashboard?role=client', 'nav.homepage'], ['Jobs', '/work?role=client', 'nav.jobs'], ['My profile', '/workspace-setup?role=client', 'nav.profile'], ['Messages', '/messages', 'nav.messages'], ['Projects', '/projects', 'nav.projects']]
+const freelancerLinks = [['Homepage', '/dashboard?role=freelancer', 'nav.homepage'], ['Jobs', '/search?scope=jobs', 'nav.jobs'], ['My profile', '/profile', 'nav.profile'], ['Messages', '/messages', 'nav.messages'], ['Projects', '/projects', 'nav.projects']]
 
 function Icon({ name }) {
   const paths = {
     overview: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
     messages: <path d="M20 11.5a7.5 7.5 0 0 1-8 7.5 8.8 8.8 0 0 1-3.7-.8L4 20l1.2-3.4A7.4 7.4 0 0 1 4 12a7.5 7.5 0 0 1 8-7.5 7.5 7.5 0 0 1 8 7Z" />,
     projects: <><path d="M3.5 6.5h6l1.7 2H20a1.5 1.5 0 0 1 1.5 1.5v8.5A1.5 1.5 0 0 1 20 20H4a1.5 1.5 0 0 1-1.5-1.5V8A1.5 1.5 0 0 1 4 6.5Z" /><path d="M2.5 10h19" /></>,
+    jobs: <><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18M10 12v2h4v-2" /></>,
     settings: <><circle cx="12" cy="8" r="3.5" /><path d="M4.5 21a7.5 7.5 0 0 1 15 0" /></>,
     search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" /></>,
     sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
@@ -73,12 +75,12 @@ function DashboardShell() {
       <div className="sidebar-top"><Link className="brand" to="/">Talent<span>Xpanse</span></Link><button className="sidebar-collapse" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>☰</button></div>
       <nav className="dashboard-nav" aria-label="Workspace navigation">{links.map(([label, target, key]) => {
         const translatedLabel = t(key, label)
-        return <button key={label} aria-label={translatedLabel} className={pathname === target.split('?')[0] && (label !== 'Overview' || pathname === '/dashboard') ? 'active' : ''} onClick={() => nav(target)}><span><Icon name={label === 'Messages' ? 'messages' : label === 'Projects' ? 'projects' : label === 'My profile' ? 'settings' : 'overview'} /></span><em>{translatedLabel}</em></button>
+        return <button key={label} aria-label={translatedLabel} className={pathname === target.split('?')[0] && (label !== 'Homepage' || pathname === '/dashboard') ? 'active' : ''} onClick={() => nav(target)}><span><Icon name={label === 'Messages' ? 'messages' : label === 'Projects' ? 'projects' : label === 'Jobs' ? 'jobs' : label === 'My profile' ? 'settings' : 'overview'} /></span><em>{translatedLabel}</em></button>
       })}</nav>
       <div className="sidebar-bottom"><AccountMenu compact={!collapsed} /><div className="sidebar-preferences"><div className="preference-row"><small>{t('language.label', 'Language')}</small><LanguageToggle compact={collapsed} /></div><div className="preference-row"><small>{t('theme.label', 'Theme')}</small><ThemeToggle /></div></div></div>
     </aside>
     <a className="skip-link" href="#workspace-content">Skip to workspace content</a><main id="workspace-content" className="dashboard-main" tabIndex="-1">
-      <header className="dashboard-topbar"><div><h2>{title}</h2><p>{subtitle}</p></div><div className="topbar-actions"><button className="topbar-search" onClick={() => setSearchOpen(true)}><span><Icon name="search" /></span> {t('nav.search', 'Search')}</button><NotificationMenu /><div className="mobile-preferences"><LanguageToggle /><ThemeToggle /></div><div className="mobile-account"><AccountMenu placement="top" /></div></div></header>
+      <header className="dashboard-topbar"><div><h2>{title}</h2><p>{subtitle}</p></div><div className="topbar-actions"><button className="topbar-search" onClick={() => setSearchOpen(true)}><span><Icon name="search" /></span> {t('nav.search', 'Search')}</button><NotificationMenu /><BetaFeedbackButton /><div className="mobile-preferences"><LanguageToggle /><ThemeToggle /></div><div className="mobile-account"><AccountMenu placement="top" /></div></div></header>
       <Outlet context={{ role }} />
     </main>
     <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />

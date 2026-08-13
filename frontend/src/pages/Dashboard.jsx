@@ -3,6 +3,7 @@ import { Link, useOutletContext, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { usePreferences } from '../contexts/PreferencesContext'
+import OnboardingChecklist from '../components/OnboardingChecklist'
 import '../dashboard-ux.css'
 
 const money = (amount) => `Ks ${Number(amount || 0).toLocaleString()}`
@@ -35,6 +36,11 @@ function WorkspaceIcon({ name }) {
     profile: <><circle cx="12" cy="8" r="3.5" /><path d="M4.5 21a7.5 7.5 0 0 1 15 0" /></>,
     credit: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h3" /></>,
     shield: <path d="M12 3 19 6v5c0 4.7-2.9 8-7 10-4.1-2-7-5.3-7-10V6l7-3Zm-3.2 9 2.1 2.1 4.4-4.4" />,
+    folder: <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z" />,
+    bell: <><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></>,
+    bookmark: <path d="M6 4.5A2.5 2.5 0 0 1 8.5 2h7A2.5 2.5 0 0 1 18 4.5V22l-6-3.5L6 22V4.5Z" />,
+    check: <path d="m5 12 4.2 4.2L19 6.5" />,
+    clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></>,
     arrow: <path d="M5 12h14M13 6l6 6-6 6" />,
   }
   return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>
@@ -57,6 +63,67 @@ function EmptyPanel({ title, body, action, to }) {
   return <div className="workspace-empty"><div><WorkspaceIcon name="spark" /></div><h3>{title}</h3><p>{body}</p>{to && <Link className="button button-outline" to={to}>{action}</Link>}</div>
 }
 
+function actionCopy(item, t) {
+  const copy = {
+    review_milestone: ['check', t('dashboard.action_review_delivery', 'Review delivered work'), t('dashboard.action_review_delivery_detail', 'A delivery is ready for your decision.')],
+    review_proposals: ['people', t('dashboard.action_review_proposals', 'Review applications'), t('dashboard.action_review_proposals_detail', 'Candidates are waiting for your response.')],
+    revise_milestone: ['spark', t('dashboard.action_revise_delivery', 'Update a delivery'), t('dashboard.action_revise_delivery_detail', 'A client requested changes before approval.')],
+    start_milestone: ['clock', t('dashboard.action_start_milestone', 'Start the next milestone'), t('dashboard.action_start_milestone_detail', 'Keep the project moving with a clear update.')],
+    continue_milestone: ['folder', t('dashboard.action_continue_project', 'Continue project work'), t('dashboard.action_continue_project_detail', 'Your active delivery is ready for progress.')],
+    follow_up: ['bell', t('dashboard.action_follow_up', 'Follow up on an application'), t('dashboard.action_follow_up_detail', 'A client has moved your application forward.')],
+  }
+  const [icon, title, detail] = copy[item.type] || ['spark', t('dashboard.next_step', 'Next step'), t('dashboard.action_generic_detail', 'There is an update waiting for you.')]
+  return { icon, title, detail }
+}
+
+function TodayPanel({ items = [], unreadCount = 0, isClient, t }) {
+  const workPath = `/work?role=${isClient ? 'client' : 'freelancer'}`
+  return <section className="workspace-today-panel">
+    <header><div><p className="eyebrow">{t('dashboard.today', 'Today')}</p><h2>{t('dashboard.keep_moving', 'Keep your work moving.')}</h2></div><Link to="/notifications" className={unreadCount ? 'workspace-inbox-link unread' : 'workspace-inbox-link'}><WorkspaceIcon name="bell" />{unreadCount ? t('dashboard.unread_updates', `${unreadCount} unread`, { count: unreadCount }) : t('dashboard.all_caught_up', 'All caught up')}</Link></header>
+    {items.length ? <div className="workspace-attention-list">{items.map((item, index) => {
+      const copy = actionCopy(item, t)
+      return <Link className="workspace-attention-item" to={item.href} key={`${item.type}-${item.href}-${index}`}><span><WorkspaceIcon name={copy.icon} /></span><div><small>{copy.title}</small><b>{item.label}</b><em>{item.context || copy.detail}</em></div><WorkspaceIcon name="arrow" /></Link>
+    })}</div> : <div className="workspace-calm-state"><span><WorkspaceIcon name="check" /></span><div><b>{t('dashboard.no_urgent_actions', 'Nothing urgent right now.')}</b><p>{isClient ? t('dashboard.client_calm', 'Explore talented people or refine an open job while you wait for the right applications.') : t('dashboard.freelancer_calm', 'Explore new opportunities, save a search, or strengthen your profile.')}</p></div><Link to={isClient ? '/search?scope=talent' : '/search?scope=jobs'}>{isClient ? t('dashboard.explore_talent', 'Explore talent') : t('dashboard.explore_jobs', 'Explore jobs')}</Link></div>}
+    <footer><Link to="/projects"><WorkspaceIcon name="folder" />{t('dashboard.open_projects', 'Open projects')}</Link><Link to={workPath}><WorkspaceIcon name="briefcase" />{isClient ? t('dashboard.manage_hiring', 'Manage hiring') : t('dashboard.track_proposals', 'Track proposals')}</Link></footer>
+  </section>
+}
+
+function ProjectPulse({ projects = [], t, formatDate }) {
+  return <section className="workspace-project-pulse">
+    <header><div><p className="eyebrow">{t('dashboard.project_pulse', 'Project pulse')}</p><h2>{t('dashboard.active_projects', 'Active projects')}</h2></div><Link to="/projects">{t('common.view_all', 'View all')}</Link></header>
+    {projects.length ? <div>{projects.map((project) => {
+      const nextMilestone = project.milestones?.find((milestone) => milestone.status !== 'approved')
+      return <Link key={project.id} to={`/projects/${project.id}`}><span><WorkspaceIcon name="folder" /></span><div><b>{project.title || project.job?.title}</b><small>{nextMilestone ? nextMilestone.title : t('dashboard.project_no_open_milestone', 'No open milestone')}</small><em>{nextMilestone?.due_date ? t('dashboard.due_date', `Due ${formatDate(nextMilestone.due_date, { dateStyle: 'medium' })}`, { date: formatDate(nextMilestone.due_date, { dateStyle: 'medium' }) }) : t('dashboard.open_workspace', 'Open workspace')}</em></div><WorkspaceIcon name="arrow" /></Link>
+    })}</div> : <div className="workspace-project-empty"><span><WorkspaceIcon name="folder" /></span><b>{t('dashboard.no_active_projects', 'No active projects yet')}</b><p>{t('dashboard.projects_appear_here', 'Accepted work will appear here with milestones and shared activity.')}</p></div>}
+  </section>
+}
+
+function SavedSearchPanel({ searches = [], t }) {
+  const searchPath = (search) => {
+    const params = new URLSearchParams({ scope: search.scope })
+    Object.entries(search.filters || {}).forEach(([key, value]) => { if (typeof value === 'string' && value) params.set(key, value) })
+    return `/search?${params.toString()}`
+  }
+  return <section className="workspace-return-panel">
+    <header><div><p className="eyebrow">{t('dashboard.return_shortcuts', 'Return shortcuts')}</p><h2>{t('dashboard.saved_searches', 'Saved searches')}</h2></div><Link to="/search?scope=saved">{t('dashboard.manage_saved', 'Manage saved')}</Link></header>
+    {searches.length ? <div>{searches.map((search) => <Link key={search.id} to={searchPath(search)}><span><WorkspaceIcon name="bookmark" /></span><div><b>{search.name}</b><small>{search.scope === 'talent' ? t('dashboard.talent_alert', 'Talent alert enabled') : t('dashboard.job_alert', 'Job alert enabled')}</small></div><WorkspaceIcon name="arrow" /></Link>)}</div> : <div className="workspace-return-empty"><span className="workspace-return-empty-icon"><WorkspaceIcon name="bookmark" /></span><div><b>{t('dashboard.no_saved_searches', 'Save a search you care about.')}</b><p>{t('dashboard.saved_searches_detail', 'Keep useful filters ready and receive matching alerts when they are available.')}</p></div><Link className="button button-primary" to="/search?scope=jobs">{t('dashboard.create_saved_search', 'Find and save a search')}</Link></div>}
+  </section>
+}
+
+function ActivityPanel({ notifications = [], t, formatDate }) {
+  return <section className="workspace-activity-panel">
+    <header><div><p className="eyebrow">{t('dashboard.recent_activity', 'Recent activity')}</p><h2>{t('dashboard.marketplace_updates', 'Marketplace updates')}</h2></div><Link to="/notifications">{t('common.view_all', 'View all')}</Link></header>
+    {notifications.length ? <div>{notifications.map((notification) => <Link className={notification.read_at ? '' : 'unread'} to={notification.url || '/notifications'} key={notification.id}><span><WorkspaceIcon name={notification.read_at ? 'bell' : 'spark'} /></span><div><b>{notification.title}</b><small>{notification.body}</small><em>{formatDate(notification.created_at, { dateStyle: 'medium' })}</em></div>{!notification.read_at && <i aria-label={t('dashboard.unread', 'Unread')} />}</Link>)}</div> : <div className="workspace-activity-empty"><WorkspaceIcon name="bell" /><b>{t('dashboard.no_updates', 'No updates yet')}</b><p>{t('dashboard.updates_appear_here', 'Project, proposal, and message updates will appear here.')}</p></div>}
+  </section>
+}
+
+function TalentSpotlight({ profiles = [], t }) {
+  return <section className="workspace-talent-spotlight">
+    <header><div><p className="eyebrow">{t('dashboard.talent_spotlight', 'Talent spotlight')}</p><h2>{t('dashboard.people_for_jobs', 'People who may fit your open work')}</h2><p>{t('dashboard.talent_spotlight_detail', 'Suggestions use the skills on your active job posts. Review each profile before inviting anyone.')}</p></div><Link className="button button-outline" to="/search?scope=talent">{t('dashboard.search_talent', 'Search talent')}</Link></header>
+    {profiles.length ? <div className="workspace-talent-grid">{profiles.map((profile) => <Link key={profile.id} to={`/search/freelancers/${profile.user_id}`}><span className="workspace-avatar">{profile.user?.profile_photo_url ? <img src={profile.user.profile_photo_url} alt="" /> : profile.user?.name?.slice(0, 2)}</span><div><b>{profile.user?.name}</b><small>{profile.title || t('common.freelancer', 'Freelancer')}</small><em>{profile.match?.skills?.length ? t('dashboard.matching_skills', `Matches ${profile.match.skills.join(', ')}`, { skills: profile.match.skills.join(', ') }) : t('dashboard.available_now', 'Available now')}</em></div><strong>{profile.user?.trust_summary?.average_rating ? `${profile.user.trust_summary.average_rating} / 5` : t('dashboard.new_talent', 'New')}</strong><WorkspaceIcon name="arrow" /></Link>)}</div> : <EmptyPanel title={t('dashboard.talent_after_job', 'Talent suggestions appear after you post a job')} body={t('dashboard.talent_after_job_detail', 'Use the marketplace search to explore freelancer profiles in the meantime.')} action={t('dashboard.search_talent', 'Search talent')} to="/search?scope=talent" />}
+  </section>
+}
+
 function JobForm({ form, onChange, busy, onCancel, onSubmit }) {
   const { t } = usePreferences()
   return <form className="dashboard-job-form" onSubmit={onSubmit}>
@@ -75,6 +142,7 @@ export default function DashboardScreen() {
   const { user, loading, errorMessage } = useAuth()
   const { t, formatDate } = usePreferences()
   const [data, setData] = useState(null)
+  const [onboarding, setOnboarding] = useState(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [showForm, setShowForm] = useState(() => params.get('postJob') === '1')
@@ -83,8 +151,8 @@ export default function DashboardScreen() {
 
   const load = useCallback(() => {
     if (!user?.id) return
-    api.get('/dashboard', { params: { role } })
-      .then(({ data: response }) => setData(response.data))
+    Promise.all([api.get('/dashboard', { params: { role } }), api.get('/onboarding')])
+      .then(([{ data: response }, { data: onboardingResponse }]) => { setData(response.data); setOnboarding(onboardingResponse.data) })
       .catch((requestError) => setError(errorMessage(requestError)))
   }, [errorMessage, role, user?.id])
 
@@ -128,30 +196,34 @@ export default function DashboardScreen() {
   const proposalCount = data.metrics?.total_proposals || 0
   const profileCompleteness = data.metrics?.profile_completeness || 0
   const credits = data.proposal_credits?.balance || 0
-  const focus = isClient
-    ? (openJobs ? { title: proposalCount ? t('dashboard.review_applications', 'Review the newest applications.') : t('dashboard.job_live_title', 'Your job post is live.'), body: proposalCount ? t('dashboard.review_count', `${proposalCount} proposals need a careful review.`, { count: proposalCount }) : t('dashboard.invite_share', 'Invite a freelancer or share the job to start receiving relevant proposals.'), action: proposalCount ? t('dashboard.review_applications', 'Review applications') : t('dashboard.manage_jobs', 'Manage jobs'), to: '/work?role=client' } : { title: t('dashboard.first_job', 'Post your first job.'), body: t('dashboard.brief_help', 'A detailed brief helps the right freelancers decide whether they are a match.'), action: t('dashboard.publish_job', 'Post a job'), to: null })
-    : (profileCompleteness < 80 ? { title: t('dashboard.profile_trust', 'Make your profile easier to trust.'), body: t('dashboard.profile_complete', `Your freelancer profile is ${profileCompleteness}% complete. Add the missing details before sending more proposals.`, { percent: profileCompleteness }), action: t('dashboard.complete_profile', 'Complete profile'), to: '/profile' } : { title: t('dashboard.choose_opportunity', 'Choose your next opportunity.'), body: t('dashboard.choose_opportunity_detail', 'Review the jobs selected for your skills, save the best ones, and apply only when the work fits.'), action: t('dashboard.browse_jobs', 'Browse jobs'), to: '/search?scope=jobs' })
-
   return <section className="workspace-dashboard">
     <header className="workspace-dashboard-header"><div><p className="eyebrow">{isClient ? t('workspace.client', 'Client workspace') : t('workspace.freelancer', 'Freelancer workspace')}</p><h1>{t('dashboard.welcome', `Welcome back, ${user.name?.split(' ')[0] || 'there'}.`, { name: user.name?.split(' ')[0] || 'there' })}</h1><p>{isClient ? t('dashboard.client_intro', 'Keep hiring decisions and project work moving from one focused place.') : t('dashboard.freelancer_intro', 'See what needs your attention and find work that fits your skills.')}</p></div><div className="workspace-header-actions"><Link className="button button-outline" to={`/work?role=${isClient ? 'client' : 'freelancer'}`}>{isClient ? t('dashboard.manage_jobs', 'Manage jobs') : t('dashboard.track_proposals', 'Track proposals')}</Link>{isClient && <button type="button" className="button button-primary" onClick={() => setShowForm(true)}>{t('dashboard.publish_job', 'Post a job')}</button>}</div></header>
     {notice && <p className="form-notice" role="status">{notice}</p>}
     {error && <p className="form-notice" role="alert">{error}</p>}
     {showForm && isClient && <JobForm form={jobForm} onChange={setJobForm} busy={busy} onCancel={() => setShowForm(false)} onSubmit={postJob} />}
 
-    <section className="workspace-focus"><div><p className="eyebrow">{t('dashboard.next_step', 'Next step')}</p><h2>{focus.title}</h2><p>{focus.body}</p></div>{focus.to ? <Link className="button button-primary" to={focus.to}>{focus.action}</Link> : <button type="button" className="button button-primary" onClick={() => setShowForm(true)}>{focus.action}</button>}</section>
+    <OnboardingChecklist onboarding={onboarding} onRewardClaimed={load} />
+
+    <section className="workspace-utility-grid">
+      <TodayPanel items={data.action_items} unreadCount={data.metrics?.unread_notifications || 0} isClient={isClient} t={t} />
+      <ProjectPulse projects={data.active_projects} t={t} formatDate={formatDate} />
+    </section>
 
     {isClient ? <>
-      <section className="workspace-metrics" aria-label={t('workspace.client', 'Client workspace')}><MetricCard icon="briefcase" label={t('dashboard.open_jobs', 'Open jobs')} value={openJobs} detail={t('dashboard.accepting_proposals', 'Currently accepting proposals')} to="/work?role=client" /><MetricCard icon="people" label={t('dashboard.applications', 'Applications')} value={proposalCount} detail={t('dashboard.all_job_posts', 'Across all your job posts')} to="/work?role=client" /><MetricCard icon="spark" label={t('dashboard.hires_made', 'Hires made')} value={data.metrics?.hired || 0} detail={t('dashboard.projects_started', 'Projects started through TalentXpanse')} to="/projects" /><MetricCard icon="shield" label={t('dashboard.reliability', 'Reliability')} value={data.reliability?.tier_label || t('common.new', 'New')} detail={data.reliability?.visibility_label || t('dashboard.normal_reach', 'Normal reach')} to="/settings/reliability" /></section>
+      <section className="workspace-metrics" aria-label={t('workspace.client', 'Client workspace')}><MetricCard icon="briefcase" label={t('dashboard.open_jobs', 'Open jobs')} value={openJobs} detail={t('dashboard.accepting_proposals', 'Currently accepting proposals')} to="/work?role=client" /><MetricCard icon="people" label={t('dashboard.applications', 'Applications')} value={proposalCount} detail={t('dashboard.all_job_posts', 'Across all your job posts')} to="/work?role=client" /><MetricCard icon="folder" label={t('dashboard.active_projects', 'Active projects')} value={data.metrics?.active_projects || 0} detail={t('dashboard.shared_workspaces', 'Shared workspaces in progress')} to="/projects" /><MetricCard icon="spark" label={t('dashboard.hires_made', 'Hires made')} value={data.metrics?.hired || 0} detail={t('dashboard.projects_started', 'Projects started through TalentXpanse')} to="/projects" /><MetricCard icon="shield" label={t('dashboard.reliability', 'Reliability')} value={data.reliability?.tier_label || t('common.new', 'New')} detail={data.reliability?.visibility_label || t('dashboard.normal_reach', 'Normal reach')} to="/settings/reliability" /></section>
       <section className="workspace-dashboard-grid client">
         <article className="workspace-panel"><header><div><p className="eyebrow">{t('dashboard.your_hiring', 'Your hiring')}</p><h2>{t('dashboard.open_job_posts', 'Open job posts')}</h2></div><Link to="/work?role=client">{t('common.view_all', 'View all')}</Link></header>{data.jobs?.length ? <div className="workspace-list">{data.jobs.map((job) => <Link className="workspace-job-row" key={job.id} to={`/search/jobs/${job.id}`}><span className="workspace-row-icon"><WorkspaceIcon name="briefcase" /></span><span><b>{job.title}</b><small>{job.category} · {money(job.budget_min)} - {money(job.budget_max)}</small><em>{t('dashboard.proposal_count', `${job.proposals_count} proposal${job.proposals_count === 1 ? '' : 's'}`, { count: job.proposals_count, suffix: job.proposals_count === 1 ? '' : 's' })}</em></span><Status value={job.status} /><WorkspaceIcon name="arrow" /></Link>)}</div> : <EmptyPanel title={t('dashboard.no_jobs', 'No jobs posted yet')} body={t('dashboard.no_jobs_detail', 'Create a clear job brief to receive proposals from freelancers.')} action={t('dashboard.first_job_action', 'Post your first job')} />}</article>
         <article className="workspace-panel"><header><div><p className="eyebrow">{t('dashboard.candidate_activity', 'Candidate activity')}</p><h2>{t('dashboard.latest_applications', 'Latest applications')}</h2></div>{proposalCount > 0 && <Link to="/work?role=client">{t('dashboard.review_all', 'Review all')}</Link>}</header>{data.recent_proposals?.length ? <div className="workspace-list proposals">{data.recent_proposals.map((proposal) => <Link className="workspace-proposal-row" key={proposal.id} to={`/search/jobs/${proposal.job_id}`}><span className="workspace-avatar">{proposal.freelancer?.profile_photo_url ? <img src={proposal.freelancer.profile_photo_url} alt="" /> : proposal.freelancer?.name?.slice(0, 2)}</span><span><b>{proposal.freelancer?.name}</b><small>{proposal.freelancer?.freelancer_profile?.title || t('common.freelancer', 'Freelancer')}</small><em>{money(proposal.bid_amount)} · {t('dashboard.delivery_days', `${proposal.delivery_days || 'Flexible'} days`, { count: proposal.delivery_days || t('dashboard.flexible', 'Flexible') })}</em></span><Status value={proposal.status} /></Link>)}</div> : <EmptyPanel title={t('dashboard.applications_here', 'Applications will appear here')} body={t('dashboard.applications_detail', 'When freelancers apply, you can shortlist, interview, and hire from the job page.')} />}</article>
       </section>
+      <TalentSpotlight profiles={data.recommended_talent} t={t} />
     </> : <>
-      <section className="workspace-metrics" aria-label={t('workspace.freelancer', 'Freelancer workspace')}><MetricCard icon="briefcase" label={t('dashboard.active_proposals', 'Active proposals')} value={data.metrics?.active_proposals || 0} detail={t('dashboard.proposal_detail', 'Submitted, shortlisted, or interviewing')} to="/work?role=freelancer" /><MetricCard icon="credit" label={t('dashboard.credits', 'Proposal Credits')} value={credits} detail={t('dashboard.credits_detail', 'Shown before you apply')} to="/settings/credits" /><MetricCard icon="profile" label={t('dashboard.profile_readiness', 'Profile readiness')} value={`${profileCompleteness}%`} detail={profileCompleteness < 80 ? t('dashboard.profile_stronger', 'A stronger profile earns trust') : t('dashboard.profile_ready', 'Ready to be discovered')} to="/profile" /><MetricCard icon="shield" label={t('dashboard.reliability', 'Reliability')} value={data.reliability?.tier_label || t('common.new', 'New')} detail={data.reliability?.visibility_label || t('dashboard.normal_reach', 'Normal reach')} to="/settings/reliability" /></section>
+      <section className="workspace-metrics" aria-label={t('workspace.freelancer', 'Freelancer workspace')}><MetricCard icon="briefcase" label={t('dashboard.active_proposals', 'Active proposals')} value={data.metrics?.active_proposals || 0} detail={t('dashboard.proposal_detail', 'Submitted, shortlisted, or interviewing')} to="/work?role=freelancer" /><MetricCard icon="credit" label={t('dashboard.credits', 'Proposal Credits')} value={credits} detail={t('dashboard.credits_detail', 'Shown before you apply')} to="/settings/credits" /><MetricCard icon="folder" label={t('dashboard.active_projects', 'Active projects')} value={data.metrics?.active_projects || 0} detail={t('dashboard.shared_workspaces', 'Shared workspaces in progress')} to="/projects" /><MetricCard icon="profile" label={t('dashboard.profile_readiness', 'Profile readiness')} value={`${profileCompleteness}%`} detail={profileCompleteness < 80 ? t('dashboard.profile_stronger', 'A stronger profile earns trust') : t('dashboard.profile_ready', 'Ready to be discovered')} to="/profile" /><MetricCard icon="shield" label={t('dashboard.reliability', 'Reliability')} value={data.reliability?.tier_label || t('common.new', 'New')} detail={data.reliability?.visibility_label || t('dashboard.normal_reach', 'Normal reach')} to="/settings/reliability" /></section>
       <section className="workspace-dashboard-grid freelancer">
-        <article className="workspace-panel"><header><div><p className="eyebrow">{t('dashboard.recommended', 'Recommended for you')}</p><h2>{t('dashboard.jobs_look', 'Jobs worth a look')}</h2></div><Link to="/search?scope=jobs">{t('dashboard.browse_all', 'Browse all')}</Link></header>{data.recommended_jobs?.length ? <div className="workspace-list">{data.recommended_jobs.map((job) => <Link className="workspace-job-row" key={job.id} to={`/search/jobs/${job.id}`}><span className="workspace-row-icon"><WorkspaceIcon name="spark" /></span><span><b>{job.title}</b><small>{job.client?.client_profile?.company_name || job.client?.name} · {job.category}</small><em>{job.skills?.slice(0, 3).join(' · ') || t('dashboard.open_opportunity', 'Open opportunity')}</em></span><strong>{money(job.budget_min)}</strong><WorkspaceIcon name="arrow" /></Link>)}</div> : <EmptyPanel title={t('dashboard.no_recommendations', 'No new recommendations yet')} body={t('dashboard.no_recommendations_detail', 'Try a wider search or save a search to receive matching job alerts.')} action={t('dashboard.search_jobs', 'Search jobs')} to="/search?scope=jobs" />}</article>
+        <article className="workspace-panel"><header><div><p className="eyebrow">{t('dashboard.recommended', 'Recommended for you')}</p><h2>{t('dashboard.jobs_look', 'Jobs worth a look')}</h2></div><Link to="/search?scope=jobs">{t('dashboard.browse_all', 'Browse all')}</Link></header>{data.recommended_jobs?.length ? <div className="workspace-list">{data.recommended_jobs.map((job) => <Link className="workspace-job-row" key={job.id} to={`/search/jobs/${job.id}`}><span className="workspace-row-icon"><WorkspaceIcon name="spark" /></span><span><b>{job.title}</b><small>{job.client?.client_profile?.company_name || job.client?.name} · {job.category}</small><em>{job.match?.skills?.length ? t('dashboard.matching_skills', `Matches ${job.match.skills.join(', ')}`, { skills: job.match.skills.join(', ') }) : job.match?.saved_search ? t('dashboard.saved_search_match', 'Matches a saved search') : job.skills?.slice(0, 3).join(' · ') || t('dashboard.open_opportunity', 'Open opportunity')}</em></span><strong>{money(job.budget_min)}</strong><WorkspaceIcon name="arrow" /></Link>)}</div> : <EmptyPanel title={t('dashboard.no_recommendations', 'No new recommendations yet')} body={t('dashboard.no_recommendations_detail', 'Try a wider search or save a search to receive matching job alerts.')} action={t('dashboard.search_jobs', 'Search jobs')} to="/search?scope=jobs" />}</article>
         <article className="workspace-panel"><header><div><p className="eyebrow">{t('dashboard.your_applications', 'Your applications')}</p><h2>{t('dashboard.keep_track', 'Keep track')}</h2></div><Link to="/work?role=freelancer">{t('common.view_all', 'View all')}</Link></header>{data.proposals?.length ? <div className="workspace-list proposals">{data.proposals.map((proposal) => <Link className="workspace-proposal-row" key={proposal.id} to={`/search/jobs/${proposal.job_id}`}><span className="workspace-row-icon"><WorkspaceIcon name="briefcase" /></span><span><b>{proposal.job?.title || t('dashboard.removed_job', 'Removed job post')}</b><small>{money(proposal.bid_amount)} · {t('dashboard.delivery_days', `${proposal.delivery_days || 'Flexible'} days`, { count: proposal.delivery_days || t('dashboard.flexible', 'Flexible') })}</small><em>{t('dashboard.sent', `Sent ${formatDate(proposal.created_at, { dateStyle: 'medium' })}`, { date: formatDate(proposal.created_at, { dateStyle: 'medium' }) })}</em></span><Status value={proposal.status} /></Link>)}</div> : <EmptyPanel title={t('dashboard.no_proposals', 'No proposals yet')} body={t('dashboard.no_proposals_detail', 'Find work that matches your skills before spending any Proposal Credits.')} action={t('dashboard.find_work', 'Find work')} to="/search?scope=jobs" />}</article>
       </section>
     </>}
+
+    <section className="workspace-return-grid"><SavedSearchPanel searches={data.saved_searches} t={t} /><ActivityPanel notifications={data.notifications} t={t} formatDate={formatDate} /></section>
   </section>
 }

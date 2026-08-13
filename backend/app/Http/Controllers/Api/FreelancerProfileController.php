@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\FreelancerProfile;
 use App\Services\ProfileReadinessService;
 use App\Services\TrustSummaryService;
+use App\Services\MarketplaceProductAnalyticsService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -18,7 +19,7 @@ class FreelancerProfileController extends Controller
         return ['data' => $this->payload($request, $trust, $readiness)];
     }
 
-    public function update(Request $request, TrustSummaryService $trust, ProfileReadinessService $readiness)
+    public function update(Request $request, TrustSummaryService $trust, ProfileReadinessService $readiness, MarketplaceProductAnalyticsService $analytics)
     {
         $this->ensureFreelancer($request);
         $data = $request->validate([
@@ -34,6 +35,7 @@ class FreelancerProfileController extends Controller
 
         $profile = FreelancerProfile::firstOrCreate(['user_id' => $request->user()->id]);
         $profile->update($data);
+        $analytics->track($request->user(), 'freelancer_profile_updated');
 
         return ['data' => $this->payload($request, $trust, $readiness)];
     }

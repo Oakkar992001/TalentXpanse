@@ -11,6 +11,7 @@ use App\Support\MarketplaceStorage;
 use App\Models\Proposal;
 use App\Services\ConversationMessageService;
 use App\Services\MarketplaceNotificationService;
+use App\Services\MarketplaceUploadSafetyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -63,7 +64,7 @@ class ConversationController extends Controller
         ]];
     }
 
-    public function storeMessage(Request $request, Conversation $conversation, ConversationMessageService $messages, MarketplaceNotificationService $notifications)
+    public function storeMessage(Request $request, Conversation $conversation, ConversationMessageService $messages, MarketplaceNotificationService $notifications, MarketplaceUploadSafetyService $safety)
     {
         $this->authorizeParticipant($request, $conversation);
         $data = $request->validate([
@@ -72,6 +73,9 @@ class ConversationController extends Controller
             'files.*' => ['file', 'max:20480', 'mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,zip,txt,csv,jpg,jpeg,png,webp'],
         ]);
         abort_if(blank($data['body'] ?? null) && ! $request->hasFile('files'), 422, 'Write a message or attach at least one file.');
+        foreach ($request->file('files', []) as $file) {
+            $safety->inspect($file, 'conversation_attachment');
+        }
         $message = $messages->create($conversation, $request->user(), $data['body'] ?? null, $request->file('files', []));
         $this->markRead($conversation, $request->user());
         $recipientId = $conversation->client_id === $request->user()->id ? $conversation->freelancer_id : $conversation->client_id;

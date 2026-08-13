@@ -37,6 +37,7 @@ export default function ProposalManagerScreen() {
   const [proposals, setProposals] = useState([])
   const [tab, setTab] = useState('all')
   const [selectedId, setSelectedId] = useState(null)
+  const [compareIds, setCompareIds] = useState([])
   const [note, setNote] = useState('')
   const [interviewDate, setInterviewDate] = useState('')
   const [declineOpen, setDeclineOpen] = useState(false)
@@ -44,16 +45,21 @@ export default function ProposalManagerScreen() {
   const [offerOpen, setOfferOpen] = useState(false)
   const [offer, setOffer] = useState({ offered_amount: '', delivery_days: '', start_date: '', message: '', milestones: [{ title: 'Project delivery', description: '', amount: '', due_date: '' }] })
   const [busy, setBusy] = useState('')
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
   const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
     try {
       const [jobResponse, proposalResponse] = await Promise.all([api.get(`/jobs/${id}`), api.get(`/jobs/${id}/proposals`)])
       setJob(jobResponse.data.data)
       setProposals(proposalResponse.data.data)
     } catch (requestError) {
       setError(errorMessage(requestError))
+    } finally {
+      setLoading(false)
     }
   }, [errorMessage, id])
 
@@ -95,6 +101,22 @@ export default function ProposalManagerScreen() {
   }
 
   const updateStatus = (status, data = {}) => run(`status-${status}`, () => api.patch(`/proposals/${selected.id}`, { status, ...data }), status === 'shortlisted' ? 'Proposal shortlisted.' : 'Interview status updated.')
+  const toggleCompare = (proposal) => {
+    setError('')
+    setCompareIds((current) => {
+      if (current.includes(proposal.id)) return current.filter((id) => id !== proposal.id)
+      if (current.length >= 3) { setError('Compare up to three candidates at a time.'); return current }
+      return [...current, proposal.id]
+    })
+  }
+  const downloadResume = async (proposal) => {
+    setBusy(`resume-${proposal.id}`); setError('')
+    try {
+      const response = await api.get(`/proposals/${proposal.id}/resume`, { responseType: 'blob' })
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+      const link = document.createElement('a'); link.href = url; link.download = proposal.resume_name || 'candidate-cv.pdf'; link.click(); URL.revokeObjectURL(url)
+    } catch (requestError) { setError(errorMessage(requestError)) } finally { setBusy('') }
+  }
   const saveNote = () => run('note', () => api.patch(`/proposals/${selected.id}`, { status: selected.status, client_note: note.trim() || null }), 'Private note saved.')
   const decline = () => {
     if (!declineReason.trim()) return
@@ -117,23 +139,26 @@ export default function ProposalManagerScreen() {
   }
 
   if (!user) return null
-  if (!job) return <section className="simple-page"><p>{error || 'Loading proposals...'}</p></section>
+  if (loading) return <section className="proposal-manager-page proposal-manager-loading" aria-live="polite"><span /><span /><p>Loading proposals...</p></section>
+  if (!job) return <section className="simple-page"><h1>Proposal manager unavailable</h1><p>{error || 'This job could not be loaded.'}</p><Link className="button button-primary" to="/work?role=client">Back to your jobs</Link></section>
   if (job.client_id !== user.id) return <section className="simple-page"><h1>Proposal manager unavailable</h1><p>You can only review proposals for your own jobs.</p><Link className="button button-primary" to="/work?role=client">Back to your jobs</Link></section>
 
   const canAct = selected && ['submitted', 'shortlisted', 'interviewing'].includes(selected.status)
   const tabCount = (status) => status === 'all' ? proposals.length : proposals.filter((proposal) => proposal.status === status).length
+  const compared = proposals.filter((proposal) => compareIds.includes(proposal.id))
 
   return <section className="proposal-manager-page">
     <Link className="proposal-manager-back" to="/work?role=client">Back to your jobs</Link>
-    <header><div><p className="eyebrow">Proposal manager</p><h1>{job.title}</h1><p>Compare applicants, keep private notes, and send clear terms before starting a contract.</p></div><Link className="button button-outline" to={`/search/jobs/${job.id}`}>View job post</Link></header>
+    <header><div><p className="eyebrow">Proposal manager</p><h1>{job.title}</h1><p>Compare applicants, keep private notes, and send clear terms before starting a contract.</p></div><div className="proposal-manager-header-actions"><button className={compareIds.length ? 'button button-primary' : 'button button-outline'} disabled={!compareIds.length} onClick={() => document.getElementById('candidate-comparison')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Compare {compareIds.length || ''} candidate{compareIds.length === 1 ? '' : 's'}</button><Link className="button button-outline" to={`/search/jobs/${job.id}`}>View job post</Link></div></header>
     {notice && <p className="form-notice" role="status">{notice}</p>}{error && <p className="form-notice" role="alert">{error}</p>}
     <nav className="proposal-tabs" aria-label="Proposal filters">{tabs.map(([value, label]) => <button key={value} className={tab === value ? 'active' : ''} onClick={() => setTab(value)}>{label}<span>{tabCount(value)}</span></button>)}</nav>
+    {compared.length > 0 && <section id="candidate-comparison" className="candidate-comparison"><header><div><p className="eyebrow">Shortlist comparison</p><h2>Review the evidence side by side</h2><p>Compare up to three candidates. This is a private client workspace.</p></div><button onClick={() => setCompareIds([])}>Clear comparison</button></header><div className="candidate-comparison-grid">{compared.map((proposal) => <article key={proposal.id}><div className="candidate-comparison-person"><span>{proposal.freelancer?.profile_photo_url ? <img src={proposal.freelancer.profile_photo_url} alt="" /> : proposal.freelancer?.name?.slice(0, 2)}</span><div><b>{proposal.freelancer?.name}</b><small>{proposal.freelancer?.freelancer_profile?.title || 'Freelancer'}</small></div></div><dl><div><dt>Bid</dt><dd>{money(proposal.bid_amount)}</dd></div><div><dt>Delivery</dt><dd>{proposal.delivery_days ? `${proposal.delivery_days} days` : 'Flexible'}</dd></div><div><dt>Experience</dt><dd>{proposal.freelancer?.freelancer_profile?.experience_level || 'Not listed'}</dd></div><div><dt>Rating</dt><dd>{proposal.freelancer?.trust_summary?.average_rating ? `${proposal.freelancer.trust_summary.average_rating} / 5` : 'New to TalentXpanse'}</dd></div></dl>{proposal.resume_name ? <button className="candidate-document" disabled={busy === `resume-${proposal.id}`} onClick={() => downloadResume(proposal)}>{busy === `resume-${proposal.id}` ? 'Preparing CV…' : `Download CV · ${proposal.resume_name}`}</button> : <p className="candidate-document muted">No CV attached to this proposal</p>}{proposal.work_samples?.length ? <div className="candidate-samples"><b>Portfolio evidence</b>{proposal.work_samples.map((sample) => sample.project_url ? <a key={sample.id} href={sample.project_url} target="_blank" rel="noreferrer">{sample.title} ↗</a> : <span key={sample.id}>{sample.title}</span>)}</div> : <p className="candidate-document muted">No portfolio samples selected</p>}<footer><button onClick={() => { setSelectedId(proposal.id); document.querySelector('.proposal-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}>Open full proposal</button><button onClick={() => toggleCompare(proposal)}>Remove</button></footer></article>)}</div></section>}
     <div className="proposal-manager-layout">
       <aside className="proposal-list" aria-label="Proposals">{visible.length ? visible.map((proposal) => <button key={proposal.id} className={proposal.id === selected?.id ? 'selected' : ''} onClick={() => setSelectedId(proposal.id)}><span className="proposal-list-avatar">{proposal.freelancer?.profile_photo_url ? <img src={proposal.freelancer.profile_photo_url} alt="" /> : proposal.freelancer?.name?.slice(0, 2)}</span><span><b>{proposal.freelancer?.name}</b><small>{proposal.freelancer?.freelancer_profile?.title || 'Freelancer'}</small><em>{money(proposal.bid_amount)}</em></span><i className={`proposal-manager-status ${proposal.status}`}>{statusLabel(proposal.status)}</i></button>) : <EmptyState tab={tab} />}</aside>
       <main className="proposal-detail">{selected ? <>
         <header className="proposal-detail-header"><div className="proposal-profile"><span className="proposal-detail-avatar">{selected.freelancer?.profile_photo_url ? <img src={selected.freelancer.profile_photo_url} alt="" /> : selected.freelancer?.name?.slice(0, 2)}</span><div><h2>{selected.freelancer?.name}</h2><p>{selected.freelancer?.freelancer_profile?.title || 'Freelancer'}{selected.freelancer?.trust_summary?.average_rating ? ` · ${selected.freelancer.trust_summary.average_rating} rating` : ''}</p></div></div><span className={`proposal-manager-status ${selected.status}`}>{statusLabel(selected.status)}</span></header>
         <section className="proposal-term-grid"><div><small>Proposal amount</small><b>{money(selected.bid_amount)}</b></div><div><small>Delivery</small><b>{selected.delivery_days ? `${selected.delivery_days} days` : 'Flexible'}</b></div><div><small>Submitted</small><b>{new Date(selected.created_at).toLocaleDateString()}</b></div></section>
-        <section className="proposal-section"><h3>Cover letter</h3><p>{selected.cover_letter}</p>{selected.work_samples?.length > 0 && <div className="proposal-work-samples"><b>Selected work samples</b>{selected.work_samples.map((sample) => sample.project_url ? <a key={sample.id} href={sample.project_url} target="_blank" rel="noreferrer">{sample.title}</a> : <span key={sample.id}>{sample.title}</span>)}</div>}</section>
+        <section className="proposal-section"><div className="proposal-evidence-heading"><div><h3>Cover letter</h3><p>{selected.cover_letter}</p></div><button className={compareIds.includes(selected.id) ? 'selected' : ''} onClick={() => toggleCompare(selected)}>{compareIds.includes(selected.id) ? 'Added to comparison' : 'Add to comparison'}</button></div>{selected.resume_name ? <div className="proposal-resume-preview"><span>PDF</span><div><b>{selected.resume_name}</b><small>Attached for this proposal only</small></div><button disabled={busy === `resume-${selected.id}`} onClick={() => downloadResume(selected)}>{busy === `resume-${selected.id}` ? 'Preparing…' : 'Preview / download'}</button></div> : <p className="proposal-document-empty">This freelancer did not attach a CV to this proposal.</p>}{selected.work_samples?.length > 0 && <div className="proposal-work-samples"><b>Selected work samples</b>{selected.work_samples.map((sample) => sample.project_url ? <a key={sample.id} href={sample.project_url} target="_blank" rel="noreferrer">{sample.title} ↗</a> : <span key={sample.id}>{sample.title}</span>)}</div>}</section>
         <OfferSummary offer={selected.latest_offer} />
         <OfferExpiryNotice offer={selected.latest_offer} />
         {selected.latest_offer?.status === 'pending' && <section className="proposal-section proposal-offer-control"><div><h3>Offer awaiting response</h3><p>The freelancer can accept or decline the terms. Withdraw only if you need to correct the offer.</p></div><button disabled={busy !== ''} onClick={withdrawOffer}>{busy === 'withdraw-offer' ? 'Withdrawing...' : 'Withdraw offer'}</button></section>}

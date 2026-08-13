@@ -39,6 +39,10 @@ class User extends Authenticatable implements MustVerifyEmail
         'terms_version',
         'terms_accepted_at',
         'privacy_accepted_at',
+        'onboarding_rewarded_at',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
+        'two_factor_confirmed_at',
     ];
 
     protected $appends = ['profile_photo_url'];
@@ -62,6 +66,10 @@ class User extends Authenticatable implements MustVerifyEmail
         'identity_verified_at',
         'identity_verified_by',
         'notification_preferences',
+        'onboarding_rewarded_at',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
+        'two_factor_confirmed_at',
     ];
 
     /**
@@ -79,6 +87,10 @@ class User extends Authenticatable implements MustVerifyEmail
             'identity_verified_at' => 'datetime',
             'terms_accepted_at' => 'datetime',
             'privacy_accepted_at' => 'datetime',
+            'onboarding_rewarded_at' => 'datetime',
+            'two_factor_secret' => 'encrypted',
+            'two_factor_recovery_codes' => 'encrypted:array',
+            'two_factor_confirmed_at' => 'datetime',
         ];
     }
 
@@ -190,6 +202,21 @@ class User extends Authenticatable implements MustVerifyEmail
     public function oauthIdentities()
     {
         return $this->hasMany(OauthIdentity::class);
+    }
+
+    public function marketplaceFeedback()
+    {
+        return $this->hasMany(MarketplaceFeedback::class);
+    }
+
+    public function marketplaceProductEvents()
+    {
+        return $this->hasMany(MarketplaceProductEvent::class);
+    }
+
+    public function reliabilityAppeals()
+    {
+        return $this->hasMany(MarketplaceReliabilityAppeal::class);
     }
 
     public function hasRole(string $role): bool

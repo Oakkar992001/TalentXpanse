@@ -10,13 +10,14 @@ use App\Models\ConversationEvent;
 use App\Models\MilestoneSubmissionFile;
 use App\Services\MarketplaceNotificationService;
 use App\Services\MilestoneSubmissionService;
+use App\Services\MarketplaceUploadSafetyService;
 use App\Support\MarketplaceStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class MilestoneSubmissionController extends Controller
 {
-    public function store(Request $request, ContractMilestone $milestone, MilestoneSubmissionService $submissions, MarketplaceNotificationService $notifications)
+    public function store(Request $request, ContractMilestone $milestone, MilestoneSubmissionService $submissions, MarketplaceNotificationService $notifications, MarketplaceUploadSafetyService $safety)
     {
         $contract = $milestone->contract;
         abort_unless($contract->freelancer_id === $request->user()->id, 403, 'Only the freelancer can submit delivery work.');
@@ -28,6 +29,9 @@ class MilestoneSubmissionController extends Controller
             'files.*' => ['file', 'max:20480', 'mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,zip,txt,csv,jpg,jpeg,png,webp'],
         ]);
         abort_if(blank($data['note'] ?? null) && ! $request->hasFile('files'), 422, 'Add delivery notes or at least one delivery file.');
+        foreach ($request->file('files', []) as $file) {
+            $safety->inspect($file, 'milestone_delivery');
+        }
 
         $submission = $submissions->submit($milestone, $request->user(), $data['note'] ?? null, $request->file('files', []));
         $this->event($contract, "Delivery submitted for review: {$milestone->title} (version {$submission->version})");

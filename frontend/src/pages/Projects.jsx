@@ -15,15 +15,18 @@ const PROJECT_REFRESH_RECONCILIATION_MS = 30000
 export function ProjectsScreen() {
   const { user, errorMessage } = useAuth()
   const [contracts, setContracts] = useState([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const loadProjects = useCallback(async ({ silent = false } = {}) => {
     if (!user?.id) return
-    if (!silent) setError('')
+    if (!silent) { setError(''); setLoading(true) }
     try {
       const { data } = await api.get('/contracts')
       setContracts(data.data)
     } catch (requestError) {
       if (!silent) setError(errorMessage(requestError))
+    } finally {
+      if (!silent) setLoading(false)
     }
   }, [errorMessage, user?.id])
 
@@ -54,7 +57,7 @@ export function ProjectsScreen() {
 
   if (!user) return <section className="simple-page"><h1>Your projects are waiting.</h1><Link className="button button-primary" to="/login">Log in</Link></section>
 
-  return <section className="projects-page"><header><p className="eyebrow">Projects</p><h1>Move work forward, one milestone at a time.</h1><p>Submit delivery files, request clear revisions, and keep the project history in one place.</p></header>{error && <p className="form-notice" role="alert">{error}</p>}<div className="project-grid">{contracts.map((contract) => <Link className="project-card" key={contract.id} to={`/projects/${contract.id}`}><p>{contract.status}</p><h2>{contract.title}</h2><small>{contract.client_id === user.id ? contract.freelancer?.name : contract.client?.name}</small><strong>{money(contract.agreed_amount)}</strong><footer><span>{contract.milestones?.filter((milestone) => milestone.status === 'approved').length || 0}/{contract.milestones?.length || 0} milestones approved</span><b>Open project</b></footer></Link>)}</div>{!contracts.length && <p className="empty-projects">Projects appear here after a client hires a freelancer.</p>}</section>
+  return <section className="projects-page"><header><p className="eyebrow">Projects</p><h1>Move work forward, one milestone at a time.</h1><p>Submit delivery files, request clear revisions, and keep the project history in one place.</p></header>{error && <p className="form-notice" role="alert">{error}</p>}{loading ? <div className="project-grid project-grid-loading" aria-live="polite"><span /><span /><span /><p>Loading your projects...</p></div> : <><div className="project-grid">{contracts.map((contract) => <Link className="project-card" key={contract.id} to={`/projects/${contract.id}`}><p>{contract.status}</p><h2>{contract.title}</h2><small>{contract.client_id === user.id ? contract.freelancer?.name : contract.client?.name}</small><strong>{money(contract.agreed_amount)}</strong><footer><span>{contract.milestones?.filter((milestone) => milestone.status === 'approved').length || 0}/{contract.milestones?.length || 0} milestones approved</span><b>Open project</b></footer></Link>)}</div>{!contracts.length && <p className="empty-projects">Projects appear here after a client hires a freelancer.</p>}</>}</section>
 }
 
 export function ProjectDetailScreen() {

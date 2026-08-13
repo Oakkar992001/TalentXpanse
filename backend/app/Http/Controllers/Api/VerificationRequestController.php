@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\IdentityVerificationSubmission;
 use App\Support\MarketplaceStorage;
+use App\Services\MarketplaceUploadSafetyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -13,7 +14,7 @@ use Throwable;
 
 class VerificationRequestController extends Controller
 {
-    public function request(Request $request)
+    public function request(Request $request, MarketplaceUploadSafetyService $safety)
     {
         $data = $request->validate([
             'type' => ['required', Rule::in(['identity', 'company'])],
@@ -26,6 +27,8 @@ class VerificationRequestController extends Controller
         if ($data['type'] === 'identity') {
             abort_if($user->identity_verification_status === 'verified', 422, 'Your identity is already verified.');
             abort_if(IdentityVerificationSubmission::query()->where('user_id', $user->id)->where('status', 'pending')->exists(), 422, 'Your identity verification request is already being reviewed.');
+            $safety->inspect($request->file('nrc_front'), 'identity_document');
+            $safety->inspect($request->file('nrc_back'), 'identity_document');
 
             $paths = [];
 

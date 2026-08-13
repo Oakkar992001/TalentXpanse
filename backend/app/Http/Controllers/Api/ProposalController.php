@@ -10,6 +10,8 @@ use App\Models\Proposal;
 use App\Services\MarketplaceHiringService;
 use App\Services\MarketplaceNotificationService;
 use App\Services\MarketplacePaymentService;
+use App\Services\MarketplaceProductAnalyticsService;
+use App\Services\MarketplaceUploadSafetyService;
 use App\Services\ProposalCreditService;
 use App\Services\TrustSummaryService;
 use App\Support\MarketplaceStorage;
@@ -24,7 +26,7 @@ use Throwable;
 
 class ProposalController extends Controller
 {
-    public function store(Request $request, Job $job, ProposalCreditService $credits, MarketplaceNotificationService $notifications)
+    public function store(Request $request, Job $job, ProposalCreditService $credits, MarketplaceNotificationService $notifications, MarketplaceUploadSafetyService $safety, MarketplaceProductAnalyticsService $analytics)
     {
         abort_unless($request->user()->hasRole('freelancer'), 403, 'Add the Freelancer role before submitting a proposal.');
         abort_unless($job->status === 'open', 422, 'This job is no longer accepting proposals.');
@@ -47,6 +49,9 @@ class ProposalController extends Controller
         ]);
 
         $uploadedResume = $request->file('proposal_resume');
+        if ($uploadedResume) {
+            $safety->inspect($uploadedResume, 'proposal_resume');
+        }
         $proposalResumePath = null;
 
         try {
@@ -109,6 +114,7 @@ class ProposalController extends Controller
             throw $exception;
         }
         $notifications->send($job->client_id, 'proposal_received', 'New proposal received', "{$request->user()->name} applied for {$job->title}.", "/jobs/{$job->id}");
+        $analytics->track($request->user(), 'proposal_submitted', ['job_id' => $job->id, 'credit_cost' => $proposal->credit_cost]);
 
         return response()->json([
             'data' => $proposal->fresh(['job', 'workSamples']),

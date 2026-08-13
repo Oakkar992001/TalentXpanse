@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Job;
 use App\Services\ProposalCreditService;
 use App\Services\TrustSummaryService;
+use App\Services\MarketplaceProductAnalyticsService;
 use Illuminate\Http\Request;
 
 class JobController extends Controller
@@ -43,10 +44,11 @@ class JobController extends Controller
         return ['data' => $job];
     }
 
-    public function store(Request $request)
+    public function store(Request $request, MarketplaceProductAnalyticsService $analytics)
     {
         $this->ensureClient($request);
         $job = $request->user()->clientJobs()->create($this->validated($request));
+        $analytics->track($request->user(), 'job_posted', ['job_id' => $job->id]);
 
         return response()->json(['data' => $job->load('client.clientProfile')], 201);
     }
