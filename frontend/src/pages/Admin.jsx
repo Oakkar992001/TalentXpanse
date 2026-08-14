@@ -33,6 +33,7 @@ export function AdminLoginScreen() {
   const [form, setForm] = useState({ email: '', password: '', two_factor_code: '' })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [requiresTwoFactor, setRequiresTwoFactor] = useState(false)
 
   if (user?.roles?.includes('admin')) return <Navigate to="/admin" replace />
 
@@ -44,7 +45,14 @@ export function AdminLoginScreen() {
       await adminLogin(form)
       navigate('/admin')
     } catch (requestError) {
-      setError(errorMessage(requestError))
+      const isTwoFactorChallenge = Boolean(requestError.response?.data?.errors?.two_factor_code)
+      if (isTwoFactorChallenge) {
+        const alreadyShowingChallenge = requiresTwoFactor
+        setRequiresTwoFactor(true)
+        setError(alreadyShowingChallenge ? errorMessage(requestError) : '')
+      } else {
+        setError(errorMessage(requestError))
+      }
     } finally {
       setBusy(false)
     }
@@ -57,10 +65,8 @@ export function AdminLoginScreen() {
     {sessionExpired && <p className="form-notice">Your session timed out for security. Please sign in again.</p>}
     {error && <p className="form-notice">{error}</p>}
     <form onSubmit={submit}>
-      <label>Work email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
-      <label>Password<input required type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label>
-      <label>Authenticator or recovery code <small>Required after administrator MFA is enabled.</small><input inputMode="numeric" autoComplete="one-time-code" value={form.two_factor_code} onChange={(event) => setForm({ ...form, two_factor_code: event.target.value })} /></label>
-      <button disabled={busy} className="button button-primary">{busy ? 'Signing in…' : 'Sign in to admin'}</button>
+      {requiresTwoFactor ? <><div className="admin-two-factor"><b>One more security step</b><p>Enter the code from your authenticator app or a recovery code for {form.email}.</p></div><label>Authenticator or recovery code<input required autoFocus inputMode="numeric" autoComplete="one-time-code" maxLength="32" value={form.two_factor_code} onChange={(event) => setForm({ ...form, two_factor_code: event.target.value })} /></label><button type="button" className="admin-two-factor-back" onClick={() => { setRequiresTwoFactor(false); setError(''); setForm((current) => ({ ...current, two_factor_code: '' })) }}>Back to credentials</button></> : <><label>Work email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label><label>Password<input required type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label></>}
+      <button disabled={busy || (requiresTwoFactor && !form.two_factor_code.trim())} className="button button-primary">{busy ? 'Signing in…' : requiresTwoFactor ? 'Verify and sign in' : 'Sign in to admin'}</button>
     </form>
     <small>There is no public administrator registration.</small>
   </section></main>

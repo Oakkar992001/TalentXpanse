@@ -98,16 +98,38 @@ export function AuthScreen({ mode }) {
   const [form, setForm] = useState({ name: '', email: '', password: '', password_confirmation: '', two_factor_code: '', terms_accepted: false, privacy_accepted: false })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [requiresTwoFactor, setRequiresTwoFactor] = useState(false)
+  const [pendingGoogleCredential, setPendingGoogleCredential] = useState(null)
   const isLogin = mode === 'login'
   const nextPath = params.get('next')?.startsWith('/') ? params.get('next') : null
+  const isTwoFactorChallenge = (requestError) => Boolean(requestError.response?.data?.errors?.two_factor_code)
+
+  const resetTwoFactorChallenge = () => {
+    setRequiresTwoFactor(false)
+    setPendingGoogleCredential(null)
+    setForm((current) => ({ ...current, two_factor_code: '' }))
+    setError('')
+  }
 
   const submit = async (event) => {
     event.preventDefault()
     setError(''); setBusy(true)
     try {
-      const user = isLogin ? await login({ email: form.email, password: form.password, two_factor_code: form.two_factor_code || null }) : await register({ ...form, role })
+      const user = isLogin
+        ? pendingGoogleCredential
+          ? await googleLogin({ credential: pendingGoogleCredential, role, two_factor_code: form.two_factor_code || null })
+          : await login({ email: form.email, password: form.password, two_factor_code: form.two_factor_code || null })
+        : await register({ ...form, role })
       navigate(isLogin && nextPath ? nextPath : isLogin ? `/dashboard?role=${user.roles.includes(role) ? role : user.roles[0]}` : `/workspace-setup?role=${role}`)
-    } catch (requestError) { setError(errorMessage(requestError)) } finally { setBusy(false) }
+    } catch (requestError) {
+      if (isLogin && isTwoFactorChallenge(requestError)) {
+        const alreadyShowingChallenge = requiresTwoFactor
+        setRequiresTwoFactor(true)
+        setError(alreadyShowingChallenge ? errorMessage(requestError) : '')
+      } else {
+        setError(errorMessage(requestError))
+      }
+    } finally { setBusy(false) }
   }
 
   const signInWithGoogle = useCallback(async (credential) => {
@@ -115,24 +137,36 @@ export function AuthScreen({ mode }) {
     try {
       const user = await googleLogin({ credential, role, two_factor_code: form.two_factor_code || null, terms_accepted: form.terms_accepted, privacy_accepted: form.privacy_accepted })
       navigate(nextPath || `/dashboard?role=${user.roles.includes(role) ? role : user.roles[0]}`)
-    } catch (requestError) { setError(errorMessage(requestError)) } finally { setBusy(false) }
-  }, [errorMessage, form.privacy_accepted, form.terms_accepted, form.two_factor_code, googleLogin, navigate, nextPath, role])
+    } catch (requestError) {
+      if (isLogin && isTwoFactorChallenge(requestError)) {
+        setPendingGoogleCredential(credential)
+        setRequiresTwoFactor(true)
+        setError('')
+      } else {
+        setError(errorMessage(requestError))
+      }
+    } finally { setBusy(false) }
+  }, [errorMessage, form.privacy_accepted, form.terms_accepted, form.two_factor_code, googleLogin, isLogin, navigate, nextPath, role])
 
   return <section className="auth-page"><div className="auth-panel"><div className="auth-card"><p className="eyebrow">{isLogin ? t('auth.welcome', 'Welcome back') : t('auth.create_account', 'Create your account')}</p><h1>{isLogin ? t('auth.continue_journey', 'Continue your journey.') : t('auth.how_use', 'How would you like to use TalentXpanse?')}</h1><p className="auth-intro">{isLogin ? t('auth.login_intro', 'Sign in to manage your work and opportunities.') : t('auth.register_intro', 'Start with one path today. You can add the other profile later.')}</p>
     <form onSubmit={submit}>
       {!isLogin && <div className="role-cards"><button type="button" className={role === 'freelancer' ? 'selected' : ''} onClick={() => setRole('freelancer')}><span>✦</span><div><b>{t('auth.find_work', 'Find work')}</b><small>{t('auth.find_work_detail', 'Build your profile, discover projects, and send proposals.')}</small></div><i /></button><button type="button" className={role === 'client' ? 'selected' : ''} onClick={() => setRole('client')}><span>▣</span><div><b>{t('auth.hire_talent', 'Hire talent')}</b><small>{t('auth.hire_talent_detail', 'Post a job, discover skilled people, and hire with confidence.')}</small></div><i /></button></div>}
-      <div className="auth-fields">
+      {isLogin && requiresTwoFactor ? <div className="auth-two-factor" aria-live="polite">
+        <span className="auth-two-factor-icon" aria-hidden="true">&#128274;</span>
+        <div><b>One more security step</b><p>Enter the code from your authenticator app or one of your recovery codes for <strong>{form.email}</strong>.</p></div>
+        <label>Authenticator or recovery code<input required autoFocus inputMode="numeric" autoComplete="one-time-code" maxLength="32" value={form.two_factor_code} onChange={(event) => setForm({ ...form, two_factor_code: event.target.value })} /></label>
+        <button type="button" className="auth-two-factor-back" onClick={resetTwoFactorChallenge}>Back to sign in</button>
+      </div> : <div className="auth-fields">
         {!isLogin && <label>{t('auth.full_name', 'Full name')}<input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t('auth.your_name', 'Your name')} /></label>}
         <label>{t('auth.email', 'Email')}<input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder={t('auth.email_example', 'Enter your email address')} /></label>
         <label>{t('auth.password', 'Password')}<input required minLength="8" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={t('auth.at_least_8', 'At least 8 characters')} /></label>
-        {isLogin && <label>Authenticator or recovery code <small>Only needed if you enabled two-factor authentication.</small><input inputMode="numeric" autoComplete="one-time-code" maxLength="32" value={form.two_factor_code} onChange={(event) => setForm({ ...form, two_factor_code: event.target.value })} /></label>}
         {!isLogin && <label>{t('auth.confirm_password', 'Confirm password')}<input required type="password" value={form.password_confirmation} onChange={(e) => setForm({ ...form, password_confirmation: e.target.value })} placeholder={t('auth.repeat_password', 'Repeat your password')} /></label>}
-      </div>
+      </div>}
       {!isLogin && <div className="auth-consent"><label><input required type="checkbox" checked={form.terms_accepted} onChange={(event) => setForm({ ...form, terms_accepted: event.target.checked })} /> <span>{t('auth.agree_prefix', 'I agree to the ')}<Link to="/terms">{t('auth.terms', 'Terms of Use')}</Link>.</span></label><label><input required type="checkbox" checked={form.privacy_accepted} onChange={(event) => setForm({ ...form, privacy_accepted: event.target.checked })} /> <span>{t('auth.agree_prefix', 'I agree to the ')}<Link to="/privacy">{t('auth.privacy', 'Privacy Policy')}</Link>.</span></label></div>}
       {isLogin && sessionExpired && <Notice>{t('auth.session_expired', 'Your session timed out for security. Please sign in again.')}</Notice>}
       {error && <Notice>{error}</Notice>}
-      <button disabled={busy} className="button button-primary auth-continue">{busy ? t('auth.please_wait', 'Please wait...') : isLogin ? t('auth.log_in', 'Log in') : t('auth.continue_as', `Continue as ${roleLabel(role)}`, { role: role === 'client' ? t('common.client', 'Client') : t('common.freelancer', 'Freelancer') })}</button>
-    </form>{isLogin && <p className="auth-forgot"><Link to="/forgot-password">{t('auth.forgot_password', 'Forgot password?')}</Link></p>}
+      <button disabled={busy || (requiresTwoFactor && !form.two_factor_code.trim())} className="button button-primary auth-continue">{busy ? t('auth.please_wait', 'Please wait...') : requiresTwoFactor ? 'Verify and sign in' : isLogin ? t('auth.log_in', 'Log in') : t('auth.continue_as', `Continue as ${roleLabel(role)}`, { role: role === 'client' ? t('common.client', 'Client') : t('common.freelancer', 'Freelancer') })}</button>
+    </form>{isLogin && !requiresTwoFactor && <p className="auth-forgot"><Link to="/forgot-password">{t('auth.forgot_password', 'Forgot password?')}</Link></p>}
     <div className="auth-divider"><span>{t('auth.or_continue', 'or continue with')}</span></div><div className="google-sign-in"><div className="google-sign-in-copy"><span className="google-symbol" aria-hidden="true">G</span><div><b>{t('auth.continue_google', 'Continue with Google')}</b><small>{t('auth.google_detail', 'Fast, secure sign-in — no extra password needed.')}</small></div></div><GoogleButton disabled={busy} onCredential={signInWithGoogle} onError={setError} /></div><p className="auth-switch">{isLogin ? t('auth.new_to', 'New to TalentXpanse?') : t('auth.already_account', 'Already have an account?')} <Link to={isLogin ? '/register' : '/login'}>{isLogin ? t('nav.signup', 'Sign up') : t('nav.login', 'Log in')}</Link></p>
   </div></div><aside className="auth-art"><div className="art-card large"><span>▣</span><b>{t('auth.projects_matter', 'Projects that matter')}</b><small>{t('auth.projects_matter_detail', 'Find the right people and the right work.')}</small></div><div className="art-card small"><Avatar name="Nandar Win" /><b>{t('auth.relationships', 'Build lasting relationships.')}</b></div><div className="art-figure">✦</div></aside></section>
 }

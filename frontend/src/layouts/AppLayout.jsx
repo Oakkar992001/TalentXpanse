@@ -10,7 +10,7 @@ import BetaFeedbackButton from '../components/BetaFeedbackButton'
 import '../app-polish.css'
 
 const publicLinks = [['/jobs', 'nav.explore_marketplace', 'Explore marketplace'], ['/how-it-works', 'nav.how_it_works', 'How it works'], ['/help', 'nav.help', 'Help'], ['/about', 'nav.why_talentxpanse', 'Why TalentXpanse']]
-const clientLinks = [['Homepage', '/dashboard?role=client', 'nav.homepage'], ['Jobs', '/work?role=client', 'nav.jobs'], ['My profile', '/workspace-setup?role=client', 'nav.profile'], ['Messages', '/messages', 'nav.messages'], ['Projects', '/projects', 'nav.projects']]
+const clientLinks = [['Homepage', '/dashboard?role=client', 'nav.homepage'], ['Job posts', '/work?role=client', 'nav.job_posts'], ['My profile', '/workspace-setup?role=client', 'nav.profile'], ['Messages', '/messages', 'nav.messages'], ['Projects', '/projects', 'nav.projects']]
 const freelancerLinks = [['Homepage', '/dashboard?role=freelancer', 'nav.homepage'], ['Jobs', '/search?scope=jobs', 'nav.jobs'], ['My profile', '/profile', 'nav.profile'], ['Messages', '/messages', 'nav.messages'], ['Projects', '/projects', 'nav.projects']]
 
 function Icon({ name }) {
@@ -75,7 +75,7 @@ function DashboardShell() {
       <div className="sidebar-top"><Link className="brand" to="/">Talent<span>Xpanse</span></Link><button className="sidebar-collapse" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>☰</button></div>
       <nav className="dashboard-nav" aria-label="Workspace navigation">{links.map(([label, target, key]) => {
         const translatedLabel = t(key, label)
-        return <button key={label} aria-label={translatedLabel} className={pathname === target.split('?')[0] && (label !== 'Homepage' || pathname === '/dashboard') ? 'active' : ''} onClick={() => nav(target)}><span><Icon name={label === 'Messages' ? 'messages' : label === 'Projects' ? 'projects' : label === 'Jobs' ? 'jobs' : label === 'My profile' ? 'settings' : 'overview'} /></span><em>{translatedLabel}</em></button>
+        return <button key={label} aria-label={translatedLabel} className={pathname === target.split('?')[0] && (label !== 'Homepage' || pathname === '/dashboard') ? 'active' : ''} onClick={() => nav(target)}><span><Icon name={label === 'Messages' ? 'messages' : label === 'Projects' ? 'projects' : (label === 'Jobs' || label === 'Job posts') ? 'jobs' : label === 'My profile' ? 'settings' : 'overview'} /></span><em>{translatedLabel}</em></button>
       })}</nav>
       <div className="sidebar-bottom"><AccountMenu compact={!collapsed} /><div className="sidebar-preferences"><div className="preference-row"><small>{t('language.label', 'Language')}</small><LanguageToggle compact={collapsed} /></div><div className="preference-row"><small>{t('theme.label', 'Theme')}</small><ThemeToggle /></div></div></div>
     </aside>
